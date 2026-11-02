@@ -886,6 +886,8 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self._handle_delivery_detail(run_id)
             elif self.path.split("?", 1)[0] == "/api/locks":
                 self._handle_locks()
+            elif self.path.split("?", 1)[0] == "/api/schedules":
+                self._handle_schedules()
             elif wf_route and wf_route[1] == "inputs":
                 self._handle_workflow_inputs(wf_route[0])
             elif self.path == "/api/pipeline":
@@ -2015,6 +2017,37 @@ class AdminHandler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001 —— 解析炸了也要报，别把一条拖成全口 500
             return {"pipeline": name, "lock_file": "", "lock_present": None,
                     "matches": None, "issues": [f"解析失败: {e}"]}
+
+    def _handle_schedules(self):
+        """`GET /api/schedules`：cron 触发租约的观测面（Workflows & Schedules 屏）。
+
+        只读：租约的裁决/释放归 triggers 域，这里不做任何写。
+        `lease_active` 在服务端算好——"租约是否还在期内"是时点判断，口径放
+        服务端，前端不拿本机时钟跟 `lease_until` 自比。
+        """
+        if not self.orch:
+            return self._json({"error": "orchestrator not set"}, 500)
+        store = self.orch.run_store() if self.orch else None
+        rows = store.list_schedules() if store is not None else []
+        import time as _time
+        now = _time.time()
+        schedules = []
+        for r in rows:
+            lease_until = r.get("lease_until") or 0
+            schedules.append({
+                "name": r.get("name", ""),
+                "pipeline": r.get("pipeline", ""),
+                "cron": r.get("cron", ""),
+                "enabled": bool(r.get("enabled")),
+                "last_fire": r.get("last_fire") or None,
+                "next_fire": r.get("next_fire") or None,
+                "lease_owner": r.get("lease_owner") or "",
+                "lease_until": lease_until or None,
+                # 租约三态：无主（''）= 空闲；有主且未到期 = 持有中；有主已到期 = 残留
+                "lease_state": ("held" if r.get("lease_owner") and lease_until > now
+                                else "stale" if r.get("lease_owner") else "free"),
+            })
+        self._json({"schedules": schedules, "count": len(schedules)})
 
     def _handle_locks(self):
         """`GET /api/locks[?pipeline=<name>]`：**当前文件 vs 当前锁**的漂移巡检。

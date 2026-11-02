@@ -288,6 +288,43 @@ class TestSettingsFace:
         )
 
 
+class TestWorkflowsSchedulesFace:
+    """Workflows & Schedules 面（评审 §4.2 六面最后一个可做面）的接线护栏（零浏览器）。
+
+    工作流卡片：/api/pipeline 名单 + /api/locks 的**三值**漂移（matches:
+    true=比过且一致 / false=漂移 / null=没法判断）——徽章三色，
+    "没法判断"不得画成"一致"。排程：/api/schedules 的租约三态由服务端按时点算好。
+    """
+
+    def setup_method(self):
+        self.js = _read("app.js")
+        self.html = _read("index.html")
+
+    def test_panel_and_two_sources_wired(self):
+        assert 'id="panel-workflows"' in self.html
+        for ep in ("/api/locks'", "/api/schedules'"):
+            assert "API_BASE + '" + ep in self.js, f"缺数据源 {ep}"
+        assert "renderWorkflows(state.workflows)" in self.js
+        assert "state.workflows = data.workflows;" in self.js
+
+    def test_lock_badge_is_three_state(self):
+        """matches 的三值各自有徽章——"没法判断"（null）不得混成"一致"。"""
+        for token in ("lockBadgeClass", "lockBadgeLabel", "'一致'", "'漂移'", "'未验证'"):
+            assert token in self.js, f"锁徽章缺 {token}"
+        assert "if (matches === true) return 'done'" in self.js
+        assert "if (matches === false) return 'failed'" in self.js
+
+    def test_lease_state_computed_on_server(self):
+        """租约三态由服务端按时点算好；前端不拿本机时钟跟 lease_until 自比。"""
+        assert "lease_state" in self.js
+        for token in ("'held'", "'stale'", "'free'"):
+            assert token in self.js, f"租约三态缺 {token}"
+        assert "lease_until > now" not in self.js
+
+    def test_drift_hint_points_to_plan_diff(self):
+        assert "loom plan --diff" in self.js
+
+
 class TestDashboardTheme:
     """视觉改版 v1（2026-10-31 用户反馈"太暗/阴沉、内容乱杂"）。
 

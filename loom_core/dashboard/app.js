@@ -32,6 +32,7 @@
     loaded: false,
     taskFilter: 'all',
     settings: null,
+    workflows: null,
   };
 
   let refreshTimer = null;
@@ -90,6 +91,8 @@
     els.badgeLogs      = $('#badge-logs');
     els.settingsPanel  = $('#panel-settings .card-body');
     els.badgeSettings  = $('#badge-settings');
+    els.workflowsPanel = $('#panel-workflows .card-body');
+    els.badgeWorkflows = $('#badge-workflows');
   }
 
   // ----------------------------------------------------------
@@ -251,6 +254,9 @@
       fetchJson(API_BASE + '/api/webhooks'),
       fetchJson(API_BASE + '/api/versions/stats'),
       fetchJson(API_BASE + '/api/config/audit'),
+      /* Workflows & Schedules 面的两源 */
+      fetchJson(API_BASE + '/api/locks'),
+      fetchJson(API_BASE + '/api/schedules'),
     ]);
     const settle = (r) => {
       if (r.status === 'fulfilled') return r.value;
@@ -273,6 +279,10 @@
         webhooks: settle(results[8]),
         versionStats: settle(results[9]),
         configAudit: settle(results[10]),
+      },
+      workflows: {
+        locks: settle(results[11]),
+        schedules: settle(results[12]),
       },
       failedCount: results.filter(r => r.status === 'rejected'
         && (!r.reason || r.reason.status !== 403)).length,
@@ -1337,6 +1347,7 @@
       state.approvals = data.approvals;
       state.deliveries = data.deliveries;
       state.settings = data.settings;
+      state.workflows = data.workflows;
       state.partialFail = data.failedCount > 0;
 
       // If all endpoints failed, treat it as offline
@@ -1371,6 +1382,7 @@
     renderLogs(state.logs);
     renderDeliveries(state.deliveries);
     renderSettings(state.settings);
+    renderWorkflows(state.workflows);
   }
 
   /* ---- Approvals（跨运行待批收件箱） ---- */
@@ -1697,6 +1709,139 @@
 
     els.settingsPanel.replaceChildren(wrap);
     if (els.badgeSettings) els.badgeSettings.textContent = '只读';
+  }
+
+  /* ---- Workflows & Schedules（评审 §4.2 六面之五，只读） ----
+     工作流：/api/pipeline 的名单 + /api/locks 的漂移三值（matches: true=比过且一致 /
+     false=漂移 / null=没法判断）——徽章三色，不把"没法判断"画成"一致"。
+     排程：/api/schedules 的租约三态（held/stale/free，服务端算好）。 */
+  function lockBadgeClass (matches) {
+    if (matches === true) return 'done';
+    if (matches === false) return 'failed';
+    return 'pending';   // null = 没法判断（没有锁可比 / 解析失败）
+  }
+
+  function lockBadgeLabel (matches) {
+    if (matches === true) return '一致';
+    if (matches === false) return '漂移';
+    return '未验证';
+  }
+
+  function fmtEpoch (v) {
+    if (!v) return '—';
+    return new Date(v * 1000).toLocaleString();
+  }
+
+  function leaseLabel (s) {
+    const state = s.lease_state || 'free';   // free/stale/held：服务端按时点算好
+    if (state === 'held') return '持有中（' + s.lease_owner + '）';
+    if (state === 'stale') return '残留（' + s.lease_owner + '，租约已过点）';
+    return '空闲';
+  }
+
+  function renderWorkflows (data) {
+    if (!data || !els.workflowsPanel) return;
+    const wrap = document.createDocumentFragment();
+
+    /* 工作流（当前文件 vs 当前锁） */
+    const locks = data.locks || {};
+    const wfb = elt('div', 'insp-block');
+    wfb.appendChild(elt('h4', null, '工作流（当前文件 vs 当前锁）'));
+    if (locks.__error || locks.__forbidden) {
+      wfb.appendChild(elt('div', 'insp-empty',
+        locks.__forbidden ? '需要 admin 权限' : '读取失败：' + locks.__error));
+    } else {
+      const pipelines = Array.isArray(locks.pipelines) ? locks.pipelines : [];
+      if (!pipelines.length) {
+        wfb.appendChild(emptyState('i-wrench', '没有可显示的流水线'));
+      } else {
+        const table = elt('table', 'tasks-table');
+        const thead = elt('thead');
+        const hr = elt('tr');
+        for (const h of ['Pipeline', '锁文件', '锁状态', '问题']) hr.appendChild(elt('th', null, h));
+        thead.appendChild(hr);
+        const tbody = elt('tbody');
+        for (const e of pipelines) {
+          const tr = elt('tr');
+          tr.appendChild(elt('td', 'mono task-pipeline', e.pipeline || ''));
+          tr.appendChild(elt('td', 'mono', e.lock_file || '—'));
+          const cls = lockBadgeClass(e.matches);
+          const badge = elt('span', 'badge-status ' + cls);
+          badge.appendChild(statusDot(cls));
+          badge.appendChild(document.createTextNode(' ' + lockBadgeLabel(e.matches)));
+          const tdLock = elt('td');
+          tdLock.appendChild(badge);
+          tr.appendChild(tdLock);
+          tr.appendChild(elt('td', null,
+            e.matches === false && e.issues && e.issues.length
+              ? e.issues.length + ' 项' : '—'));
+          if (e.matches === false && e.issues && e.issues.length) {
+            tr.title = e.issues.join('\n');
+          }
+          tbody.appendChild(tr);
+        }
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        wfb.appendChild(table);
+        const drifted = Array.isArray(locks.drifted) ? locks.drifted.length : 0;
+        if (drifted) {
+          wfb.appendChild(elt('div', 'insp-note',
+            drifted + ' 条流水线的当前文件与锁不一致——先 loom plan --diff 看差异，再决定重锁。'));
+        }
+      }
+    }
+    wrap.appendChild(wfb);
+
+    /* 排程（cron 触发租约） */
+    const sch = data.schedules || {};
+    const sb = elt('div', 'insp-block');
+    sb.appendChild(elt('h4', null, '排程（cron 触发租约）'));
+    if (sch.__error || sch.__forbidden) {
+      sb.appendChild(elt('div', 'insp-empty',
+        sch.__forbidden ? '需要 admin 权限' : '读取失败：' + sch.__error));
+    } else {
+      const rows = Array.isArray(sch.schedules) ? sch.schedules : [];
+      if (!rows.length) {
+        sb.appendChild(elt('div', 'insp-empty',
+          '没有已登记的排程（triggers.yaml 未配，或服务未带 triggers 启动）'));
+      } else {
+        const table = elt('table', 'tasks-table');
+        const thead = elt('thead');
+        const hr = elt('tr');
+        for (const h of ['名称', 'Pipeline', 'cron', '启停', '上次触发', '下次触发', '租约'])
+          hr.appendChild(elt('th', null, h));
+        thead.appendChild(hr);
+        const tbody = elt('tbody');
+        for (const s of rows) {
+          const tr = elt('tr');
+          tr.appendChild(elt('td', 'mono task-pipeline', s.name || ''));
+          tr.appendChild(elt('td', null, s.pipeline || '—'));
+          tr.appendChild(elt('td', 'mono', s.cron || '—'));
+          const en = elt('td');
+          const enBadge = elt('span', 'badge-status ' + (s.enabled ? 'done' : 'pending'));
+          enBadge.textContent = s.enabled ? '启用' : '停用';
+          en.appendChild(enBadge);
+          tr.appendChild(en);
+          tr.appendChild(elt('td', null, fmtEpoch(s.last_fire)));
+          tr.appendChild(elt('td', null, fmtEpoch(s.next_fire)));
+          tr.appendChild(elt('td', null, leaseLabel(s)));
+          tbody.appendChild(tr);
+        }
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        sb.appendChild(table);
+      }
+      sb.appendChild(elt('div', 'insp-note',
+        '租约三态（held/stale/free）由服务端按时点算好；裁决与释放归 triggers 域，本面板只读。'));
+    }
+    wrap.appendChild(sb);
+
+    els.workflowsPanel.replaceChildren(wrap);
+    if (els.badgeWorkflows) {
+      const wc = data.locks && data.locks.count != null ? data.locks.count : '--';
+      const sc = data.schedules && data.schedules.count != null ? data.schedules.count : '--';
+      els.badgeWorkflows.textContent = wc + ' / ' + sc;
+    }
   }
 
   function renderError () {
