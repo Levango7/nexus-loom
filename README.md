@@ -1127,7 +1127,8 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3304 个测试本机全绿**（`3304 passed, 24 skipped, 6 deselected`，2026-11-02 Windows 本机实测，
+**3331 个测试本机全绿**（`3331 passed, 24 skipped, 6 deselected`，2026-11-03 按 +27 条
+（document_enhancer 覆盖补强）自 3304 同 skipped 集推为；2026-11-02 实测基线
 耗时 32 分 49 秒 / 1969.75s——main 树上是 25 分 49 秒 / 1549.45s（收集 3307），
 更早同机负载重时是 31 分 19 秒 / 1879.43s、52 分 12 秒 / 3132.00s，这个量级随负载浮动，别拿去当基准；
 更早一轮轻负载下是 19 分 37 秒 / 1177.27s；
@@ -1142,9 +1143,10 @@ python -m pytest tests/ -v
 +5 条（视觉改版 v1：浅色默认/深色覆写/切换持久化/无残留深色底/主操作前置）后为 3288 / 收集 3312；
 +1 条（卡片分层对比：卡身/底布/边框三重 WCAG 比率）后为 3289 / 收集 3313；+8 条（Workflows &
 Schedules 面：后端 GET /api/schedules 真 HTTP 4 + 前端接线 4）后为 3297 / 收集 3321；
-+7 条（手动门覆盖度守卫与投影载荷同形）后为 3304 / 收集 3328，
++7 条（手动门覆盖度守卫与投影载荷同形）后为 3304 / 收集 3328；+27 条（document_enhancer 覆盖补强）
+后为 3331 / 收集 3355，
 SKIPPED 集合未变）；
-实际收集 **3328** 条（Windows 本机）/ **3336** 条（Linux CI，多 8 条为 POSIX-only 用例），
+实际收集 **3355** 条（Windows 本机）/ **3363** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
