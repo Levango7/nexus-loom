@@ -59,6 +59,29 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
+### Tests（2026-11-02，节点检查器投影态：前端换文案这件事终于有判据）
+
+#87 把"跨进程运行从 RunStore 投影答"修好了，后端契约有判据
+（`tests/test_node_inspector.py` 断言 `source == "runstore"` 且四类明细显式 `None`），
+前端 `app.js` 也按 `d.source === 'runstore'` 换了文案——但**"前端据此换文案"这句话此前
+没有任何证据**：`tests/test_dashboard_s2.py` 只按字符串 token 扫 app.js 源码（代理指标，
+两句文案同时印出来也能绿），`tests/check_dashboard_browser.py` 里 `inspector|runstore|投影`
+零命中。而那个真 Chrome 门是手动的、不进 pytest 收集，用例被删 CI 也不会红。
+
+- **手动门补真渲染用例**（`tests/check_dashboard_browser.py`，真 Chrome 实跑 10 条 PASS，
+  其中 2 条新增）：投影态节点必须出现"跨进程运行…不落投影"三处换过的文案、不得出现
+  "该节点没有产出 / 熔断器未建立 / 限流器未建立 / 查不到（store 未就绪）"、质量门与断点块
+  整块不渲染、`max_retries=None` 显示 `1 / ?`；同一门的**反向对照**是内存态节点，那几行
+  必须还是原文案——只判一边的话，把两套字都印出来也能过。
+- **门覆盖度进 CI**（新增 `tests/test_browser_gate.py`，7 条）：把门里每条 `print("PASS: …")`
+  当成一条已交付用例，断言 ①主题一条不缺 ②每条用例的 PASS 之前最后一句可执行语句必须是
+  断言（判"两个 PASS 之间有 expect"太松——前置 setup 行会替被删的断言兜底）③投影态正反两面
+  都在。**它挡的是"用例被删/断言被删"，不冒充"渲染已被 CI 验证"**：浏览器门仍然只在本机跑。
+- **mock 与后端同形**：门里 mock 的投影响应必须与 `_node_inspector_from_projection` 的真产出
+  逐字段一致——mock 一漂移，门就在验一个不存在的契约，而那种漂移在手动门里永远看不出来。
+- 窄变异 5 条全 RED（前端判定写死 false / 写死 true / 删掉用例最后一条断言 / 整块删用例 /
+  后端把 `max_retries` 改成 0），每条注入后字节级还原并核 sha256。
+
 ### Fixed（2026-10-31，控制台审计与节点检查器；PR #87，代记）
 
 > 这条由 qoder 代 zcode 记：#87 改的是 `admin_api.py` / `dashboard` / `openapi_spec`，

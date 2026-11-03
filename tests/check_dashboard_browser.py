@@ -10,6 +10,64 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+#: `/tasks/<id>/nodes/<node>` 在内存里查不到那次运行（被淘汰 / 别的进程跑的）时后端的
+#: 投影响应。字段与 `admin_api.AdminHandler._node_inspector_from_projection` 逐字段一致，
+#: `tests/test_browser_gate.py` 会把它与后端真产出对账——mock 漂移了这门就在验一个
+#: 不存在的契约，而那种漂移在手动门里永远看不出来。
+PROJECTION_NODE_PAYLOAD = {
+    "task_id": "sample",
+    "task_status": "paused",
+    "source": "runstore",
+    "node": {
+        "name": "alpha",
+        "agent": "alpha",
+        "status": "done",
+        "attempts": 1,
+        "skip_reason": "",
+        "error": "",
+        "dependencies": [],
+        "max_retries": None,
+        "duration_ms": None,
+        "artifact_keys": ["doc"],
+    },
+    "artifact": None,
+    "idempotency": None,
+    "circuit_breaker": None,
+    "rate_limit": None,
+    "quality": None,
+    "checkpoint": None,
+}
+
+#: 同一节点走**内存态**时的响应（没有 `source`）：四类明细齐全，用来做反向对照——
+#: 换了文案的那几行在这里必须还是原文案，否则"按 source 换文案"只是把两套字都印出来。
+IN_MEMORY_NODE_PAYLOAD = {
+    "task_id": "sample",
+    "task_status": "paused",
+    "node": {
+        "name": "beta",
+        "agent": "writer",
+        "status": "done",
+        "attempts": 1,
+        "skip_reason": "",
+        "error": "",
+        "dependencies": ["alpha"],
+        "max_retries": 2,
+    },
+    "artifact": {
+        "keys": ["doc"],
+        "size": 5,
+        "preview": {"doc": {"type": "str", "value": "hello", "length": 5}},
+        "truncated": False,
+    },
+    "idempotency": {"key": "beta:doc", "recorded": False},
+    "circuit_breaker": {"state": "CLOSED", "failure_count": 0},
+    "rate_limit": {"rate": 2, "burst": 4, "available_tokens": 3,
+                   "total_acquired": 1, "total_blocked": 0},
+    "quality": None,
+    "checkpoint": None,
+}
+
+
 
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -47,9 +105,17 @@ def check(browser, base: str) -> None:
         }},
         "/tasks/sample": {
             "id": "sample", "pipeline": "demo", "status": "paused",
-            "dag": {"nodes": [], "layers": []},
+            "dag": {
+                "nodes": [
+                    {"name": "alpha", "status": "done", "attempts": 1},
+                    {"name": "beta", "status": "done", "attempts": 1, "dependencies": ["alpha"]},
+                ],
+                "layers": [["alpha"], ["beta"]],
+            },
             "awaiting_approval": {"nodes": ["gate"], "messages": {}},
         },
+        "/tasks/sample/nodes/alpha": PROJECTION_NODE_PAYLOAD,
+        "/tasks/sample/nodes/beta": IN_MEMORY_NODE_PAYLOAD,
         # Settings 面（评审 §4.2，只读 v1）的四源。**按后端真形状 mock**：
         # `/api/webhooks` 只给 name/pipeline/enabled/secret_env/output，没有 url——
         # 用作者想象的形状 mock，正好会放过"渲染一个不存在的字段"这类缺陷。
@@ -61,15 +127,30 @@ def check(browser, base: str) -> None:
         "/api/versions/stats": {"status": "ok", "tracked_files": 7, "total_versions": 21,
                                "total_size_bytes": 4096, "max_versions_per_file": 5},
         "/api/config/audit": {"audit_file": "audit/config.jsonl", "count": 2, "records": []},
+        # Workflows & Schedules 面（#93）的两源。**必须一起 mock**：这两条一漏，
+        # 请求会穿透到静态服务器变 404，页面只显示"部分数据不可用"——
+        # 门看上去还在跑，其实已经少验了两块（下面 `unmocked` 那道断言就是为了不再静默发生）。
+        "/api/schedules": {"schedules": [{
+            "name": "nightly", "pipeline": "demo.yaml", "cron": "0 2 * * *",
+            "enabled": True, "last_fire": 1700000000, "next_fire": 1700003600,
+            "lease_owner": "worker-1", "lease_until": 1700000900, "lease_state": "held",
+        }], "count": 1},
+        "/api/locks": {"scope": "current files", "pipelines": [
+            {"pipeline": "demo", "matches": True}], "count": 1, "cached": 0, "drifted": []},
     }
     statuses: dict[str, int] = {}
     posts: list[str] = []
+    #: 前端真的去取、但门里没 mock 的 API 路径。以前这种请求会被 `continue_()` 放给静态
+    #: 服务器，拿到 404 后页面只显示"部分数据不可用"——门照样绿，那两块等于没验。
+    unmocked: list[str] = []
 
     def respond(route):
         from urllib.parse import urlsplit
 
         path = urlsplit(route.request.url).path
         if path not in responses and not path.startswith("/tasks/"):
+            if path.startswith("/api/") or path == "/health":
+                unmocked.append(path)
             route.continue_()
             return
         if route.request.method == "POST":
@@ -127,6 +208,39 @@ def check(browser, base: str) -> None:
         page.locator('tr[data-task-id="sample"]').click()
         reject = page.locator(".btn-reject")
         expect(reject).to_be_enabled()
+
+        # 跨进程节点检查器（#87 的修复）：投影里没有的四类明细是 `None`，前端必须
+        # 按 `source === "runstore"` 换成"不落投影"的说法。此前 `test_dashboard_s2.py`
+        # 只按字符串 token 扫 app.js 源码，这个门里 inspector/投影 零命中 ⇒
+        # "前端据此换文案"这句话没有任何证据。
+        page.locator(".dag-node", has_text="alpha").click()
+        body = page.locator("#inspector-body")
+        expect(page.locator("#inspector-title")).to_have_text("alpha")
+        expect(body).to_contain_text("跨进程运行：以下为 RunStore 投影摘要")
+        expect(body).to_contain_text("投影不存正文（跨进程运行）")
+        assert body.get_by_text("不落投影（跨进程运行）").count() == 3, "幂等/熔断/限流三处都要换文案"
+        expect(body).not_to_contain_text("该节点没有产出")
+        expect(body).not_to_contain_text("熔断器未建立")
+        expect(body).not_to_contain_text("限流器未建立")
+        expect(body).not_to_contain_text("查不到（store 未就绪）")
+        # 质量门整块不渲染（投影里是 None，不是"没有质量门"）；说明文字本身含这四个字，
+        # 所以按块标题判，不按整段文本判。
+        assert body.locator("h4", has_text="质量门明细").count() == 0, "投影里 quality=None 就不该有质量门块"
+        assert body.locator("h4", has_text="断点续跑").count() == 0
+        attempts_row = body.locator(".insp-row").filter(has_text="尝试次数")
+        expect(attempts_row).to_contain_text("1 / ?")
+        print("PASS: projection inspector swaps copy instead of reading null as empty")
+
+        page.locator("#inspector-close").click()
+        page.locator(".dag-node", has_text="beta").click()
+        expect(page.locator("#inspector-title")).to_have_text("beta")
+        expect(body).to_contain_text("hello")
+        expect(body).to_contain_text("否——首次执行")
+        expect(body).to_contain_text("CLOSED（连续失败 0 次）")
+        expect(body).not_to_contain_text("投影不存正文（跨进程运行）")
+        expect(body).not_to_contain_text("不落投影（跨进程运行）")
+        print("PASS: in-memory inspector keeps the detail copy (negative control)")
+        page.locator("#inspector-close").click()
         dialogs: list[str] = []
 
         def dismiss(dialog):
@@ -175,6 +289,19 @@ def check(browser, base: str) -> None:
         expect(panel).to_contain_text("配置审计记录")
         expect(panel).to_contain_text("不触发回滚")
         print("PASS: settings face renders four sources, masks secrets and states read-only")
+
+        # Workflows & Schedules 面（#93）：排程行与租约三态从 /api/schedules 真渲染。
+        # 这两条 mock 是并 main 后才发现漏的——漏了门也照样绿，只是页面多一行"部分数据不可用"。
+        wf = page.locator("#panel-workflows")
+        expect(wf).to_contain_text("nightly")
+        expect(wf).to_contain_text("0 2 * * *")
+        expect(wf).to_contain_text("持有中（worker-1）")
+        expect(page.locator("#badge-workflows")).to_have_text("1 / 1")
+        print("PASS: workflows & schedules panel renders rows and lease state")
+        assert not unmocked, (
+            "门里没 mock 的前端数据源：" + str(sorted(set(unmocked)))
+            + "——它们会被放给静态服务器变 404，页面只显示'部分数据不可用'，那几块等于没验"
+        )
         assert not errors, errors
     finally:
         page.close()
