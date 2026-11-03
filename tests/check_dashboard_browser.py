@@ -116,15 +116,41 @@ def check(browser, base: str) -> None:
         },
         "/tasks/sample/nodes/alpha": PROJECTION_NODE_PAYLOAD,
         "/tasks/sample/nodes/beta": IN_MEMORY_NODE_PAYLOAD,
+        # Settings 面（评审 §4.2，只读 v1）的四源。**按后端真形状 mock**：
+        # `/api/webhooks` 只给 name/pipeline/enabled/secret_env/output，没有 url——
+        # 用作者想象的形状 mock，正好会放过"渲染一个不存在的字段"这类缺陷。
+        "/api/config": {"llm": {"model": "demo-model"}, "security": {"api_key": "sk-very-secret"},
+                        "runner": {"pool_size": 4}},
+        "/api/webhooks": {"webhooks": [{"name": "demo-hook", "pipeline": "demo.yaml",
+                                        "enabled": True, "secret_env": "HOOK_SECRET",
+                                        "output": "out"}]},
+        "/api/versions/stats": {"status": "ok", "tracked_files": 7, "total_versions": 21,
+                               "total_size_bytes": 4096, "max_versions_per_file": 5},
+        "/api/config/audit": {"audit_file": "audit/config.jsonl", "count": 2, "records": []},
+        # Workflows & Schedules 面（#93）的两源。**必须一起 mock**：这两条一漏，
+        # 请求会穿透到静态服务器变 404，页面只显示"部分数据不可用"——
+        # 门看上去还在跑，其实已经少验了两块（下面 `unmocked` 那道断言就是为了不再静默发生）。
+        "/api/schedules": {"schedules": [{
+            "name": "nightly", "pipeline": "demo.yaml", "cron": "0 2 * * *",
+            "enabled": True, "last_fire": 1700000000, "next_fire": 1700003600,
+            "lease_owner": "worker-1", "lease_until": 1700000900, "lease_state": "held",
+        }], "count": 1},
+        "/api/locks": {"scope": "current files", "pipelines": [
+            {"pipeline": "demo", "matches": True}], "count": 1, "cached": 0, "drifted": []},
     }
     statuses: dict[str, int] = {}
     posts: list[str] = []
+    #: 前端真的去取、但门里没 mock 的 API 路径。以前这种请求会被 `continue_()` 放给静态
+    #: 服务器，拿到 404 后页面只显示"部分数据不可用"——门照样绿，那两块等于没验。
+    unmocked: list[str] = []
 
     def respond(route):
         from urllib.parse import urlsplit
 
         path = urlsplit(route.request.url).path
         if path not in responses and not path.startswith("/tasks/"):
+            if path.startswith("/api/") or path == "/health":
+                unmocked.append(path)
             route.continue_()
             return
         if route.request.method == "POST":
@@ -248,6 +274,34 @@ def check(browser, base: str) -> None:
         page.locator("#token-save").click()
         expect(page.locator("#nt-pipeline option")).to_have_text(["after-login"])
         print("PASS: saving credentials reloads the workflow catalog")
+
+        # Settings 面（评审 §4.2，只读 v1）：四块真渲染 + 敏感键掩码 + 只读边界。
+        # 这一步是 PR #90 声称"真 Chrome 11 项全过"的**可复现版本**——那次是一次性脚本，
+        # 没进仓，别人没法重跑；而且它按想象的字段 mock，漏掉了 `/api/webhooks` 没有 url。
+        panel = page.locator("#panel-settings")
+        expect(panel).to_contain_text("运行配置")
+        expect(panel).to_contain_text("llm.model")
+        expect(panel).to_contain_text("***（已掩码）")
+        expect(panel).not_to_contain_text("sk-very-secret")
+        expect(panel).to_contain_text("demo-hook")
+        expect(panel).to_contain_text("demo.yaml")
+        expect(panel).to_contain_text("受跟踪文件")
+        expect(panel).to_contain_text("配置审计记录")
+        expect(panel).to_contain_text("不触发回滚")
+        print("PASS: settings face renders four sources, masks secrets and states read-only")
+
+        # Workflows & Schedules 面（#93）：排程行与租约三态从 /api/schedules 真渲染。
+        # 这两条 mock 是并 main 后才发现漏的——漏了门也照样绿，只是页面多一行"部分数据不可用"。
+        wf = page.locator("#panel-workflows")
+        expect(wf).to_contain_text("nightly")
+        expect(wf).to_contain_text("0 2 * * *")
+        expect(wf).to_contain_text("持有中（worker-1）")
+        expect(page.locator("#badge-workflows")).to_have_text("1 / 1")
+        print("PASS: workflows & schedules panel renders rows and lease state")
+        assert not unmocked, (
+            "门里没 mock 的前端数据源：" + str(sorted(set(unmocked)))
+            + "——它们会被放给静态服务器变 404，页面只显示'部分数据不可用'，那几块等于没验"
+        )
         assert not errors, errors
     finally:
         page.close()

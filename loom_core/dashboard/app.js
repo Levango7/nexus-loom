@@ -31,6 +31,8 @@
     lastUpdated: null,
     loaded: false,
     taskFilter: 'all',
+    settings: null,
+    workflows: null,
   };
 
   let refreshTimer = null;
@@ -55,6 +57,7 @@
     els.tokenPrompt    = $('#token-prompt');
     els.tokenInput     = $('#token-input');
     els.tokenSave      = $('#token-save');
+    els.themeToggle    = $('#theme-toggle');
 
     // Panel containers
     els.statusPanel    = $('#panel-status .card-body');
@@ -86,6 +89,10 @@
     els.badgeQuality   = $('#badge-quality');
     els.badgeCost      = $('#badge-cost');
     els.badgeLogs      = $('#badge-logs');
+    els.settingsPanel  = $('#panel-settings .card-body');
+    els.badgeSettings  = $('#badge-settings');
+    els.workflowsPanel = $('#panel-workflows .card-body');
+    els.badgeWorkflows = $('#badge-workflows');
   }
 
   // ----------------------------------------------------------
@@ -184,6 +191,31 @@
 
   function getToken () { return sessionStorage.getItem(TOKEN_KEY) || ''; }
 
+  /* ---- 主题（浅色默认；data-theme 切换；偏好持久化到 localStorage） ---- */
+  const THEME_KEY = 'loom_dashboard_theme';
+
+  function applyTheme (theme) {
+    const t = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    if (els.themeToggle) {
+      els.themeToggle.textContent = t === 'dark' ? '浅色' : '深色';
+    }
+  }
+
+  function initTheme () {
+    let stored = '';
+    try { stored = localStorage.getItem(THEME_KEY) || ''; } catch (e) { /* 隐私模式 */ }
+    applyTheme(stored === 'dark' ? 'dark' : 'light');
+    if (els.themeToggle) {
+      els.themeToggle.addEventListener('click', () => {
+        const now = document.documentElement.getAttribute('data-theme') === 'dark'
+          ? 'light' : 'dark';
+        applyTheme(now);
+        try { localStorage.setItem(THEME_KEY, now); } catch (e) { /* 忽略 */ }
+      });
+    }
+  }
+
   async function fetchJson (url) {
     const token = getToken();
     const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
@@ -217,6 +249,14 @@
       fetchJson(API_BASE + '/api/logs?limit=30&since=86400'),
       fetchJson(API_BASE + '/api/approvals'),
       fetchJson(API_BASE + '/api/deliveries?limit=' + DELIVERIES_LIMIT),
+      /* Settings 面（评审 §4.2，只读 v1）的四源 */
+      fetchJson(API_BASE + '/api/config'),
+      fetchJson(API_BASE + '/api/webhooks'),
+      fetchJson(API_BASE + '/api/versions/stats'),
+      fetchJson(API_BASE + '/api/config/audit'),
+      /* Workflows & Schedules 面的两源 */
+      fetchJson(API_BASE + '/api/locks'),
+      fetchJson(API_BASE + '/api/schedules'),
     ]);
     const settle = (r) => {
       if (r.status === 'fulfilled') return r.value;
@@ -234,6 +274,16 @@
       logs: settle(results[4]),
       approvals: settle(results[5]),
       deliveries: settle(results[6]),
+      settings: {
+        config: settle(results[7]),
+        webhooks: settle(results[8]),
+        versionStats: settle(results[9]),
+        configAudit: settle(results[10]),
+      },
+      workflows: {
+        locks: settle(results[11]),
+        schedules: settle(results[12]),
+      },
       failedCount: results.filter(r => r.status === 'rejected'
         && (!r.reason || r.reason.status !== 403)).length,
     };
@@ -1296,6 +1346,8 @@
       state.logs = data.logs;
       state.approvals = data.approvals;
       state.deliveries = data.deliveries;
+      state.settings = data.settings;
+      state.workflows = data.workflows;
       state.partialFail = data.failedCount > 0;
 
       // If all endpoints failed, treat it as offline
@@ -1329,6 +1381,8 @@
     renderCost(state.cost);
     renderLogs(state.logs);
     renderDeliveries(state.deliveries);
+    renderSettings(state.settings);
+    renderWorkflows(state.workflows);
   }
 
   /* ---- Approvals（跨运行待批收件箱） ---- */
@@ -1546,6 +1600,250 @@
     els.deliveriesPanel.replaceChildren(wrap);
   }
 
+  /* ---- Settings（评审 §4.2 Settings 面 v1：只读） ----
+     数据源：/api/config（运行配置快照）、/api/webhooks（集成）、
+     /api/versions/stats + /api/config/audit（版本与配置审计）；预算复用 /api/cost。
+     只读不写：写操作（配置更新/调预算/版本回滚）要 X-Confirm + admin，留待后续批。 */
+  function maskConfigValue (key, value) {
+    // 防御性掩码：即便后端将来把密钥放进快照，这里也不把值原样画出来
+    if (/key|secret|token|password|passwd|credential/i.test(String(key))) {
+      return '***（已掩码）';
+    }
+    if (Array.isArray(value)) return value.join(', ');
+    if (value == null) return '—';
+    return String(value);
+  }
+
+  function flattenConfig (obj, prefix, out) {
+    for (const k of Object.keys(obj || {}).sort()) {
+      const v = obj[k];
+      const path = prefix ? prefix + '.' + k : k;
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        flattenConfig(v, path, out);
+      } else {
+        out.push([path, maskConfigValue(path, v)]);
+      }
+    }
+    return out;
+  }
+
+  function settingsSection (title, rows, note) {
+    const block = elt('div', 'insp-block');
+    block.appendChild(elt('h4', null, title));
+    for (const [label, value, cls] of rows) {
+      block.appendChild(inspectorRow(label, value, cls));
+    }
+    if (note) block.appendChild(elt('div', 'insp-note', note));
+    return block;
+  }
+
+  function renderSettings (data) {
+    if (!data || !els.settingsPanel) return;
+    const wrap = document.createDocumentFragment();
+
+    /* 运行配置快照（敏感键已掩码） */
+    const cfg = data.config || {};
+    if (cfg.__error || cfg.__forbidden) {
+      wrap.appendChild(settingsSection('运行配置',
+        [['读取', cfg.__forbidden ? '需要 admin 权限' : '失败：' + cfg.__error, 'insp-muted']]));
+    } else {
+      wrap.appendChild(settingsSection('运行配置（GET /api/config · 敏感键已掩码）',
+        flattenConfig(cfg, '', []),
+        '进程当前的运行配置快照；修改走 POST /api/config（需 X-Confirm + admin），本面板只读。'));
+    }
+
+    /* 预算（复用 cost 载荷） */
+    const cost = state.cost || {};
+    if (cost.__error || cost.__forbidden) {
+      wrap.appendChild(settingsSection('预算',
+        [['读取', cost.__forbidden ? '需要 admin 权限' : '失败：' + cost.__error, 'insp-muted']]));
+    } else {
+      const budget = Number(cost.budget) > 0 ? '$' + Number(cost.budget).toFixed(2) : '不限';
+      const remaining = cost.budget_remaining == null
+        ? '不限' : '$' + Number(cost.budget_remaining).toFixed(4);
+      wrap.appendChild(settingsSection('预算', [
+        ['总预算', budget, 'mono'],
+        ['剩余', remaining, 'mono'],
+        ['已超支', cost.budget_exceeded ? '是' : '否',
+          cost.budget_exceeded ? 'insp-warn' : 'insp-ok'],
+      ], '预算熔断线来自 /api/cost；调预算走 POST /api/cost/budget（本面板只读）。'));
+    }
+
+    /* 集成 */
+    const hooks = data.webhooks || {};
+    const items = Array.isArray(hooks.webhooks) ? hooks.webhooks : [];
+    if (hooks.__error || hooks.__forbidden) {
+      wrap.appendChild(settingsSection('集成',
+        [['webhook', hooks.__forbidden ? '需要 admin 权限' : '失败：' + hooks.__error, 'insp-muted']]));
+    } else if (!items.length) {
+      wrap.appendChild(settingsSection('集成', [['webhook', '未配置', 'insp-muted']],
+        'MCP 与队列没有暴露读端点（如实标注，不在这里编造）。'));
+    } else {
+      const rows = items.map((w, i) => ['webhook ' + (i + 1),
+        String(w.name || '') + ' → ' + String(w.pipeline || '—')
+        + (w.enabled === false ? '（已停用）' : '')]);
+      wrap.appendChild(settingsSection('集成', rows,
+        'MCP 与队列没有暴露读端点（如实标注，不在这里编造）。'));
+    }
+
+    /* 版本与配置审计 */
+    const vs = data.versionStats || {};
+    const ca = data.configAudit || {};
+    const vrows = [];
+    if (vs.__error || vs.__forbidden) {
+      vrows.push(['版本', vs.__forbidden ? '需要 admin 权限' : '失败：' + vs.__error, 'insp-muted']);
+    } else {
+      vrows.push(['受跟踪文件', String(vs.tracked_files == null ? '—' : vs.tracked_files), 'mono']);
+      vrows.push(['版本总数', String(vs.total_versions == null ? '—' : vs.total_versions), 'mono']);
+      vrows.push(['占用', fmtBytes(vs.total_size_bytes), 'mono']);
+      vrows.push(['单文件上限',
+        String(vs.max_versions_per_file == null ? '—' : vs.max_versions_per_file) + ' 版', 'mono']);
+    }
+    if (ca.__error || ca.__forbidden) {
+      vrows.push(['配置审计', ca.__forbidden ? '需要 admin 权限' : '失败：' + ca.__error, 'insp-muted']);
+    } else {
+      vrows.push(['配置审计记录', String(ca.count == null ? '—' : ca.count), 'mono']);
+    }
+    wrap.appendChild(settingsSection('版本与配置审计', vrows,
+      '来源：/api/versions/stats 与 /api/config/audit；只读展示，不触发回滚。'));
+
+    els.settingsPanel.replaceChildren(wrap);
+    if (els.badgeSettings) els.badgeSettings.textContent = '只读';
+  }
+
+  /* ---- Workflows & Schedules（评审 §4.2 六面之五，只读） ----
+     工作流：/api/pipeline 的名单 + /api/locks 的漂移三值（matches: true=比过且一致 /
+     false=漂移 / null=没法判断）——徽章三色，不把"没法判断"画成"一致"。
+     排程：/api/schedules 的租约三态（held/stale/free，服务端算好）。 */
+  function lockBadgeClass (matches) {
+    if (matches === true) return 'done';
+    if (matches === false) return 'failed';
+    return 'pending';   // null = 没法判断（没有锁可比 / 解析失败）
+  }
+
+  function lockBadgeLabel (matches) {
+    if (matches === true) return '一致';
+    if (matches === false) return '漂移';
+    return '未验证';
+  }
+
+  function fmtEpoch (v) {
+    if (!v) return '—';
+    return new Date(v * 1000).toLocaleString();
+  }
+
+  function leaseLabel (s) {
+    const state = s.lease_state || 'free';   // free/stale/held：服务端按时点算好
+    if (state === 'held') return '持有中（' + s.lease_owner + '）';
+    if (state === 'stale') return '残留（' + s.lease_owner + '，租约已过点）';
+    return '空闲';
+  }
+
+  function renderWorkflows (data) {
+    if (!data || !els.workflowsPanel) return;
+    const wrap = document.createDocumentFragment();
+
+    /* 工作流（当前文件 vs 当前锁） */
+    const locks = data.locks || {};
+    const wfb = elt('div', 'insp-block');
+    wfb.appendChild(elt('h4', null, '工作流（当前文件 vs 当前锁）'));
+    if (locks.__error || locks.__forbidden) {
+      wfb.appendChild(elt('div', 'insp-empty',
+        locks.__forbidden ? '需要 admin 权限' : '读取失败：' + locks.__error));
+    } else {
+      const pipelines = Array.isArray(locks.pipelines) ? locks.pipelines : [];
+      if (!pipelines.length) {
+        wfb.appendChild(emptyState('i-wrench', '没有可显示的流水线'));
+      } else {
+        const table = elt('table', 'tasks-table');
+        const thead = elt('thead');
+        const hr = elt('tr');
+        for (const h of ['Pipeline', '锁文件', '锁状态', '问题']) hr.appendChild(elt('th', null, h));
+        thead.appendChild(hr);
+        const tbody = elt('tbody');
+        for (const e of pipelines) {
+          const tr = elt('tr');
+          tr.appendChild(elt('td', 'mono task-pipeline', e.pipeline || ''));
+          tr.appendChild(elt('td', 'mono', e.lock_file || '—'));
+          const cls = lockBadgeClass(e.matches);
+          const badge = elt('span', 'badge-status ' + cls);
+          badge.appendChild(statusDot(cls));
+          badge.appendChild(document.createTextNode(' ' + lockBadgeLabel(e.matches)));
+          const tdLock = elt('td');
+          tdLock.appendChild(badge);
+          tr.appendChild(tdLock);
+          tr.appendChild(elt('td', null,
+            e.matches === false && e.issues && e.issues.length
+              ? e.issues.length + ' 项' : '—'));
+          if (e.matches === false && e.issues && e.issues.length) {
+            tr.title = e.issues.join('\n');
+          }
+          tbody.appendChild(tr);
+        }
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        wfb.appendChild(table);
+        const drifted = Array.isArray(locks.drifted) ? locks.drifted.length : 0;
+        if (drifted) {
+          wfb.appendChild(elt('div', 'insp-note',
+            drifted + ' 条流水线的当前文件与锁不一致——先 loom plan --diff 看差异，再决定重锁。'));
+        }
+      }
+    }
+    wrap.appendChild(wfb);
+
+    /* 排程（cron 触发租约） */
+    const sch = data.schedules || {};
+    const sb = elt('div', 'insp-block');
+    sb.appendChild(elt('h4', null, '排程（cron 触发租约）'));
+    if (sch.__error || sch.__forbidden) {
+      sb.appendChild(elt('div', 'insp-empty',
+        sch.__forbidden ? '需要 admin 权限' : '读取失败：' + sch.__error));
+    } else {
+      const rows = Array.isArray(sch.schedules) ? sch.schedules : [];
+      if (!rows.length) {
+        sb.appendChild(elt('div', 'insp-empty',
+          '没有已登记的排程（triggers.yaml 未配，或服务未带 triggers 启动）'));
+      } else {
+        const table = elt('table', 'tasks-table');
+        const thead = elt('thead');
+        const hr = elt('tr');
+        for (const h of ['名称', 'Pipeline', 'cron', '启停', '上次触发', '下次触发', '租约'])
+          hr.appendChild(elt('th', null, h));
+        thead.appendChild(hr);
+        const tbody = elt('tbody');
+        for (const s of rows) {
+          const tr = elt('tr');
+          tr.appendChild(elt('td', 'mono task-pipeline', s.name || ''));
+          tr.appendChild(elt('td', null, s.pipeline || '—'));
+          tr.appendChild(elt('td', 'mono', s.cron || '—'));
+          const en = elt('td');
+          const enBadge = elt('span', 'badge-status ' + (s.enabled ? 'done' : 'pending'));
+          enBadge.textContent = s.enabled ? '启用' : '停用';
+          en.appendChild(enBadge);
+          tr.appendChild(en);
+          tr.appendChild(elt('td', null, fmtEpoch(s.last_fire)));
+          tr.appendChild(elt('td', null, fmtEpoch(s.next_fire)));
+          tr.appendChild(elt('td', null, leaseLabel(s)));
+          tbody.appendChild(tr);
+        }
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        sb.appendChild(table);
+      }
+      sb.appendChild(elt('div', 'insp-note',
+        '租约三态（held/stale/free）由服务端按时点算好；裁决与释放归 triggers 域，本面板只读。'));
+    }
+    wrap.appendChild(sb);
+
+    els.workflowsPanel.replaceChildren(wrap);
+    if (els.badgeWorkflows) {
+      const wc = data.locks && data.locks.count != null ? data.locks.count : '--';
+      const sc = data.schedules && data.schedules.count != null ? data.schedules.count : '--';
+      els.badgeWorkflows.textContent = wc + ' / ' + sc;
+    }
+  }
+
   function renderError () {
     if (!els.errorOverlay) return;
     els.errorOverlay.style.display = 'flex';
@@ -1586,6 +1884,7 @@
   // ----------------------------------------------------------
   function init () {
     cacheDom();
+    initTheme();
     if (els.retryBtn) els.retryBtn.addEventListener('click', handleRetry);
     if (els.newTaskForm) els.newTaskForm.addEventListener('submit', submitTask);
     if (runBack) runBack.addEventListener('click', closeRun);

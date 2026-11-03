@@ -33,6 +33,8 @@ REQUIRED_PASS_TOPICS = {
     "delivery ledger list and detail": "交付账本列表与明细（C-7）",
     "projection inspector swaps copy": "节点检查器投影态换文案（C-10）",
     "in-memory inspector keeps the detail copy": "同节点的内存态反向对照（C-10）",
+    "settings face renders four sources": "Settings 面四源渲染 / 掩码 / 只读边界（PR #90）",
+    "workflows & schedules panel renders rows": "Workflows & Schedules 面排程行与租约三态（PR #93）",
     "denied access": "403 与空数据必须可区分",
     "failed requests": "503 不能伪装成零成本或空收件箱",
     "successful empty responses": "成功空响应仍渲染为空",

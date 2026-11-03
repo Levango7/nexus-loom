@@ -520,6 +520,13 @@ def _ops_paths() -> dict:
                 "responses": {"200": {"description": "逐流水线的漂移问题表"}},
             },
         },
+        "/api/schedules": {
+            "get": {
+                "summary": "cron 触发租约的观测面（只读）：逐排程的 cron/启停/"
+                           "last_fire/next_fire/租约三态（held/stale/free，服务端算好）",
+                "responses": {"200": {"description": "排程列表与数量"}},
+            },
+        },
         "/api/dashboard": {
             "get": {
                 "summary": "Dashboard 聚合数据（任务含 progress/steps + Agent 摘要；任务按 principal 过滤）",

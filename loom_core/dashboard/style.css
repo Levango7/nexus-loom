@@ -10,32 +10,71 @@
 }
 
 :root {
-  --bg-body: #1a1a2e;
-  --bg-card: #16213e;
-  --bg-accent: #0f3460;
-  --text-primary: #e0e0e0;
-  --text-muted: #999;
-  --highlight: #e94560;
-  --border: #0f3460;
+  /* 浅色（默认）：用户反馈旧深色"太阴沉/太暗"——改为低饱和、明亮的运维台 */
+  color-scheme: light;
 
-  --status-ok: #4caf50;
-  --status-warn: #ff9800;
-  --status-error: #e94560;
-  --status-done: #81c784;
-  --status-info: #64b5f6;
-  --highlight-soft: #ff8a65;
+  --bg-body: #e9edf5;          /* 底布压深一档：卡片（纯白）浮起来 */
+  --bg-card: #ffffff;
+  --bg-accent: #f5f7fb;        /* 卡头/次级面：比卡身略灰，分区可见 */
+  --text-primary: #232a3b;
+  --text-muted: #5f6a7d;
+  --text-strong: #101828;
+  --highlight: #4f46e5;        /* 主强调：靛蓝 */
+  --highlight-soft: #818cf8;
+  --border: #d3dae7;           /* 边框加深：卡界与底布分明 */
+  --border-strong: #bcc7da;
+  --border-soft: rgba(16, 24, 40, 0.09);
+  --surface-raised: rgba(16, 24, 40, 0.05);
+
+  --status-ok: #16a34a;
+  --status-warn: #d97706;
+  --status-error: #dc2626;
+  --status-done: #15803d;
+  --status-info: #2563eb;
 
   /* 半透明色底（与对应状态 token 同源，集中定义避免散落硬编码） */
-  --tint-ok: rgba(76, 175, 80, 0.15);
-  --tint-warn: rgba(255, 152, 0, 0.15);
-  --tint-error: rgba(233, 69, 96, 0.15);
-  --tint-info: rgba(33, 150, 243, 0.15);
+  --tint-ok: rgba(22, 163, 74, 0.10);
+  --tint-warn: rgba(217, 119, 6, 0.10);
+  --tint-error: rgba(220, 38, 38, 0.10);
+  --tint-info: rgba(37, 99, 235, 0.10);
+  --on-solid-ok: #ffffff;
 
   --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-  --radius: 8px;
-  --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 14px rgba(16, 24, 40, 0.10);
+}
+
+/* 精致深色（可切换，data-theme=dark）：比旧版提亮一档，去暗沉紫调 */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-body: #0b0f16;          /* 深色同样把底布压深、卡片提亮，界限分明 */
+  --bg-card: #1a2231;
+  --bg-accent: #212b3c;
+  --text-primary: #e7eaf3;
+  --text-muted: #9aa5b8;
+  --text-strong: #f5f7fc;
+  --highlight: #8b93ff;
+  --highlight-soft: #a5b4fc;
+  --border: #33405a;
+  --border-strong: #46536f;
+  --border-soft: rgba(255, 255, 255, 0.09);
+  --surface-raised: rgba(255, 255, 255, 0.07);
+
+  --status-ok: #34d399;
+  --status-warn: #fbbf24;
+  --status-error: #f87171;
+  --status-done: #4ade80;
+  --status-info: #60a5fa;
+  --tint-ok: rgba(52, 211, 153, 0.12);
+  --tint-warn: rgba(251, 191, 36, 0.12);
+  --tint-error: rgba(248, 113, 113, 0.12);
+  --tint-info: rgba(96, 165, 250, 0.12);
+  --on-solid-ok: #08210f;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 html {
@@ -85,8 +124,8 @@ body {
 /* --- Header ----------------------------------------------- */
 .header {
   background: var(--bg-card);
-  border-bottom: 2px solid var(--highlight);
-  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -124,6 +163,20 @@ body {
   background: var(--status-ok);
   animation: pulse 2s infinite;
 }
+
+/* 主题切换（浅/深）：浅色为默认，偏好持久化到 localStorage */
+.theme-toggle {
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.theme-toggle:hover { border-color: var(--highlight); color: var(--highlight); }
+.theme-toggle:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -165,22 +218,22 @@ body {
   justify-content: space-between;
   padding: 12px 16px;
   background: var(--bg-accent);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
 }
 
 .card-header h2 {
   font-size: 0.9rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-weight: 650;
+  color: var(--text-strong);
+  letter-spacing: 0.02em;
 }
 
 .card-header .badge {
   font-size: 0.7rem;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.1);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-raised);
   color: var(--text-muted);
 }
 
@@ -212,7 +265,7 @@ body {
 }
 
 .stat-item {
-  background: rgba(15, 52, 96, 0.3);
+  background: var(--surface-raised);
   border-radius: 6px;
   padding: 12px;
   text-align: center;
@@ -285,8 +338,8 @@ body {
 }
 
 .tasks-table tbody td {
-  padding: 6px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border-soft);
   vertical-align: middle;
 }
 
@@ -295,7 +348,7 @@ body {
 }
 
 .tasks-table tbody tr:hover {
-  background: rgba(15, 52, 96, 0.3);
+  background: var(--surface-raised);
 }
 
 .task-id {
@@ -345,7 +398,7 @@ body {
 
 /* Progress bar */
 .progress-wrap {
-  background: rgba(255,255,255,0.08);
+  background: var(--surface-raised);
   border-radius: 4px;
   height: 6px;
   width: 100%;
@@ -380,8 +433,8 @@ body {
 }
 
 .stream-row td {
-  background: rgba(15, 52, 96, 0.25);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .live-stream {
@@ -450,7 +503,7 @@ body {
 .newtask-form textarea,
 .newtask-form select,
 .newtask-form input[type="text"] {
-  background: rgba(15, 52, 96, 0.35);
+  background: var(--bg-accent);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text-primary);
@@ -530,7 +583,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: rgba(15, 52, 96, 0.2);
+  background: var(--surface-raised);
   border-radius: 6px;
   border-left: 3px solid var(--status-ok);
 }
@@ -569,7 +622,7 @@ body {
 }
 
 .agent-status-tag.ok { background: rgba(76, 175, 80, 0.15); color: var(--status-ok); }
-.agent-status-tag.warn { background: rgba(255, 152, 0, 0.15); color: var(--status-warn); }
+.agent-status-tag.warn { background: var(--tint-warn); color: var(--status-warn); }
 .agent-status-tag.error { background: rgba(233, 69, 96, 0.15); color: var(--status-error); }
 
 /* --- Metrics panel ---------------------------------------- */
@@ -580,7 +633,7 @@ body {
 }
 
 .metric-card {
-  background: rgba(15, 52, 96, 0.2);
+  background: var(--surface-raised);
   border-radius: 6px;
   padding: 10px 12px;
   display: flex;
@@ -596,7 +649,7 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: rgba(255,255,255,0.05);
+  background: var(--surface-raised);
   flex-shrink: 0;
 }
 
@@ -785,7 +838,7 @@ body {
   font-size: 0.8rem; font-weight: 600; cursor: pointer;
 }
 .approval-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-approve { background: var(--status-ok); color: #0b1b0b; }
+.btn-approve { background: var(--status-ok); color: var(--on-solid-ok); }
 .btn-reject  { background: transparent; border-color: var(--status-error); color: var(--status-error); }
 
 .approval-history { margin-top: 12px; }
@@ -844,7 +897,7 @@ body {
 .insp-issues { margin-top: 4px; }
 .insp-key {
   display: block; font-family: var(--font-mono); font-size: 0.72rem;
-  color: var(--status-info); background: rgba(0,0,0,0.25);
+  color: var(--status-info); background: var(--surface-raised);
   padding: 4px 6px; border-radius: 4px; word-break: break-all; margin-bottom: 4px;
 }
 .insp-artifact { display: flex; flex-direction: column; gap: 3px; }

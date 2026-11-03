@@ -329,7 +329,28 @@ class TestNewTaskId:
         assert mcp_tail.count("new_task_id()") == 1, mcp_tail
 
     def test_dashboard_token_moved_to_session_storage(self):
+        """凭据只进 sessionStorage；localStorage 只许存**非凭据**偏好（如主题）。
+
+        原断言是 `"localStorage" not in js`——禁整个 API。视觉改版 v1 需要把主题
+        偏好（浅/深）持久化到 localStorage（2026-10-31，C-12），字符串级封禁会把
+        它一起打死。这里把判据收紧到**语义**而不是 API 名：所有 localStorage 调用
+        的键必须是非凭据的白名单键，凭据键（TOKEN_KEY）逐个验仍在 sessionStorage。
+        """
+        import re
+
         dash = Path(__file__).parent.parent / "loom_core" / "dashboard"
         js = (dash / "app.js").read_text(encoding="utf-8")
-        assert "localStorage" not in js
+        # 凭据路径：读写都在 sessionStorage（关标签页即失效）
         assert js.count("sessionStorage") >= 2
+        assert "sessionStorage.setItem(TOKEN_KEY" in js
+        assert "sessionStorage.getItem(TOKEN_KEY" in js
+        # localStorage：每次调用的键必须是白名单里的非凭据键
+        non_credential_keys = ("THEME_KEY",)
+        calls = re.findall(r"localStorage\.(?:get|set)Item\(([^)]*)\)", js)
+        assert calls, "app.js 里没有 localStorage 调用——白名单形同虚设，删掉本段"
+        for arg in calls:
+            assert any(k in arg for k in non_credential_keys), \
+                f"localStorage 只许存非凭据偏好，发现键表达式: {arg!r}"
+        # 反向：凭据键绝不能出现在 localStorage 调用里
+        for bad in ("localStorage.setItem(TOKEN_KEY", "localStorage.getItem(TOKEN_KEY"):
+            assert bad not in js

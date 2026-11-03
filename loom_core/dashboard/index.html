@@ -38,6 +38,8 @@
 <div class="header">
   <h1><svg class="ico ico-lg" aria-hidden="true"><use href="#i-wrench"/></svg> <span class="accent">Loom</span> 控制台</h1>
   <div class="header-right">
+    <button id="theme-toggle" class="theme-toggle" type="button"
+            aria-label="切换深浅主题">深色</button>
     <span id="last-updated" class="last-updated">--</span>
     <span class="refresh-indicator"></span>
   </div>
@@ -94,6 +96,30 @@
     </div>
   </div>
 
+  <!-- FULL-WIDTH: New Task（布局改版：主操作前置到首屏） -->
+  <div class="card wide" id="panel-newtask">
+    <div class="card-header">
+      <h2><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg> 新建任务</h2>
+      <span id="newtask-status" class="badge">POST /api/tasks</span>
+    </div>
+    <div class="card-body">
+      <form id="newtask-form" class="newtask-form">
+        <label for="nt-query">Query（文档主题）</label>
+        <textarea id="nt-query" rows="2" placeholder="例如：Python asyncio 并发编程指南" required></textarea>
+        <div class="newtask-row">
+          <label for="nt-pipeline">Pipeline
+            <select id="nt-pipeline"></select>
+          </label>
+          <label for="nt-output">Output（可选）
+            <input id="nt-output" type="text" placeholder="output/my_doc.md">
+          </label>
+          <button id="nt-submit" type="submit">提交任务</button>
+        </div>
+        <div id="nt-msg" class="newtask-msg" hidden></div>
+      </form>
+    </div>
+  </div>
+
   <!-- FULL-WIDTH: Approvals（跨运行待批收件箱；数据来自持久台账，重启后仍在） -->
   <div class="card wide" id="panel-approvals">
     <div class="card-header">
@@ -144,30 +170,6 @@
         </div>
         <div id="inspector-body"></div>
       </aside>
-    </div>
-  </div>
-
-  <!-- FULL-WIDTH: New Task -->
-  <div class="card wide" id="panel-newtask">
-    <div class="card-header">
-      <h2><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg> 新建任务</h2>
-      <span id="newtask-status" class="badge">POST /api/tasks</span>
-    </div>
-    <div class="card-body">
-      <form id="newtask-form" class="newtask-form">
-        <label for="nt-query">Query（文档主题）</label>
-        <textarea id="nt-query" rows="2" placeholder="例如：Python asyncio 并发编程指南" required></textarea>
-        <div class="newtask-row">
-          <label for="nt-pipeline">Pipeline
-            <select id="nt-pipeline"></select>
-          </label>
-          <label for="nt-output">Output（可选）
-            <input id="nt-output" type="text" placeholder="output/my_doc.md">
-          </label>
-          <button id="nt-submit" type="submit">提交任务</button>
-        </div>
-        <div id="nt-msg" class="newtask-msg" hidden></div>
-      </form>
     </div>
   </div>
 
@@ -223,6 +225,34 @@
       <div class="empty-state">
         <div class="icon"><svg class="ico ico-lg" aria-hidden="true"><use href="#i-cost"/></svg></div>
         <div>暂无成本数据</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS: 只读运行配置 / 预算 / 集成 / 版本与配置审计（评审 §4.2 Settings 面 v1） -->
+  <div class="card wide" id="panel-settings">
+    <div class="card-header">
+      <h2><svg class="ico" aria-hidden="true"><use href="#i-key"/></svg> 设置</h2>
+      <span id="badge-settings" class="badge">只读</span>
+    </div>
+    <div class="card-body">
+      <div class="empty-state">
+        <div class="icon"><svg class="ico ico-lg" aria-hidden="true"><use href="#i-key"/></svg></div>
+        <div>读取配置中…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WORKFLOWS & SCHEDULES: 工作流卡片（lock 漂移徽标）+ 排程租约观测（评审 §4.2 六面） -->
+  <div class="card wide" id="panel-workflows">
+    <div class="card-header">
+      <h2><svg class="ico" aria-hidden="true"><use href="#i-wrench"/></svg> Workflows & Schedules</h2>
+      <span id="badge-workflows" class="badge">--</span>
+    </div>
+    <div class="card-body">
+      <div class="empty-state">
+        <div class="icon"><svg class="ico ico-lg" aria-hidden="true"><use href="#i-wrench"/></svg></div>
+        <div>读取工作流与排程…</div>
       </div>
     </div>
   </div>
