@@ -1127,8 +1127,8 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3349 个测试本机全绿**（`3349 passed, 24 skipped, 6 deselected`，2026-11-03 按 +18 条
-（fact_checker LLM 核查路径全覆盖）自 3331 同 skipped 集推为；2026-11-02 实测基线
+**3372 个测试本机全绿**（`3372 passed, 24 skipped, 6 deselected`，2026-11-04 按 +23 条
+（worker 生命周期路径补全）自 3349 同 skipped 集推为；2026-11-02 实测基线
 耗时 32 分 49 秒 / 1969.75s——main 树上是 25 分 49 秒 / 1549.45s（收集 3307），
 同日（2026-11-03）+27/+18 两批在旧基线上的全量实测是 33 分 14 秒 / 1994.02s，
 更早同机负载重时是 31 分 19 秒 / 1879.43s、52 分 12 秒 / 3132.00s，这个量级随负载浮动，别拿去当基准；
@@ -1148,9 +1148,14 @@ Schedules 面：后端 GET /api/schedules 真 HTTP 4 + 前端接线 4）后为 3
 后为 3331 / 收集 3355；+18 条（fact_checker LLM 核查路径全覆盖：`_llm_available` 三分支 /
 `_verify_claims` LLM 分支与异常回退 / `_verify_with_llm` 全身（verdict 映射、预算耗尽、非 JSON、
 索引全体无效、未知值归一）/ `_collect_sources` 深度护栏 / 真构造走 `BaseAgent.__init__`
-（`AgentMeta` 数据类 + tmp_path 隔离缓存与日志））后为 3349 / 收集 3373，
+（`AgentMeta` 数据类 + tmp_path 隔离缓存与日志））后为 3349 / 收集 3373；+23 条
+（worker 生命周期路径补全：A6 GC 门控（忙时也 GC 的回归 + 间隔未到不提前的反向对照 + 配置
+读错回落缺省）/ `_maybe_gc` 失败只告警 / `refresh_config` 三分支 / orchestrator 懒构建与
+shutdown 所有权 / resume 一次性认领（跑完即清位）/ principal 透传 owner / 锁不匹配如实
+拒绝 / reclaim 失败不退出 / CLI 缺省面与 `--once`、`--idle-timeout` 两条路径 + 信号 handler）
+后为 3372 / 收集 3396，
 SKIPPED 集合未变）；
-实际收集 **3373** 条（Windows 本机）/ **3381** 条（Linux CI，多 8 条为 POSIX-only 用例），
+实际收集 **3396** 条（Windows 本机）/ **3404** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
