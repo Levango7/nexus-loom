@@ -783,16 +783,29 @@ class TestSideChannels:
         node.agent_config.circuit_breaker = {"enabled": True}
         ex._circuit_breaker_success(node)
         breaker.record_success.assert_called_once()
+        # 两级配置都关：必须早退，不建断路器也不记成功
         disabled = _make_node()
         disabled.agent_config.circuit_breaker = None
-        ex._circuit_breaker_success(disabled)  # 未启用：早退不触注册表
+        disabled.circuit_breaker = None  # MagicMock 的默认属性为真值，不清掉会误走下面的回退分支
+        ex._circuit_breaker_success(disabled)
+        breaker.record_success.assert_called_once()
+        ex._cb_registry.get_or_create.assert_called_once()
+
+        # 回退路径：agent_config 未配时读节点级 circuit_breaker（TaskNode 形态）
+        fallback = _make_node()
+        fallback.agent_config.circuit_breaker = None
+        fallback.circuit_breaker = {"enabled": True, "failure_threshold": 3}
+        ex._circuit_breaker_success(fallback)
+        assert breaker.record_success.call_count == 2
+        assert ex._cb_registry.get_or_create.call_args.kwargs["failure_threshold"] == 3
 
     def test_extract_queries_short_line_and_default_query(self, tmp_path):
         ex = _make_executor()
         f = tmp_path / "in.md"
-        f.write_text("# 注释\n短\n有效的研究主题文本\n", encoding="utf-8")
+        f.write_text("# 注释\n短\n方向二\n有效的研究主题文本\n", encoding="utf-8")
         node = _make_node()
         node.agent_config.config = {}
+        # 「方向二」3 字：门槛是 <4 过滤，必须仍被排除（把边界钉在 4，而非任意的 <2）
         assert ex._extract_queries(str(f), node) == ["有效的研究主题文本"]
         empty = tmp_path / "empty.md"
         empty.write_text("\n# only-comment\n", encoding="utf-8")
