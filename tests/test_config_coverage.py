@@ -6,7 +6,9 @@
 
 - `_overlay_file_lock`：Windows O_EXCL 自旋的**陈旧锁抢占**与**超时如实报错**；
   POSIX fcntl 分支（Windows 上天然不可达——用假 fcntl 模块行使它，含加锁成功、
-  解锁失败被抑制、超时三态）；
+  解锁失败被抑制、超时三态）；Windows 分支则在非 Windows 上用
+  `sys.modules["fcntl"]=None` 强制（分派就在函数内 `try: import fcntl`，
+  O_EXCL/stat/unlink 本身跨平台，Linux CI 也能如实行使）；
 - `_read_overlay` 形状错误三族：顶层非对象 / values 非对象（既有已覆盖）/
   revision 非整数——错因必须进 `last_overlay_error` 而不是静默；
 - CAS 三个错误分支（真实覆盖不到的形状）：损坏覆写真上拒绝增量写 / 写盘失败
@@ -69,11 +71,19 @@ def _patch_clock(monkeypatch, step=5.0):
     return clock
 
 
+@pytest.fixture()
+def windows_lock_branch(monkeypatch):
+    """强制锁函数走 Windows O_EXCL 分支：分派就在函数内 `try: import fcntl`，
+    sys.modules["fcntl"]=None 让该 import 抛 ImportError；O_EXCL/stat/unlink
+    本身跨平台，故 Linux CI 上也能如实行使（此前这些行在非 Windows 上恒不可达）。"""
+    monkeypatch.setitem(sys.modules, "fcntl", None)
+
+
 # ─── 文件锁：Windows 自旋分支 ────────────────────────────────
 
 class TestWindowsFileLock:
 
-    def test_stale_lock_is_taken_over(self, state_dir):
+    def test_stale_lock_is_taken_over(self, state_dir, windows_lock_branch):
         """崩溃留下的锁文件（mtime 超 30s）被抢占：写照样成功。"""
         import os
         import time as _t
@@ -89,7 +99,8 @@ class TestWindowsFileLock:
         assert json.loads(_overlay_path(state_dir).read_text(
             encoding="utf-8"))["values"]["llm.model"] == "m-stale-test"
 
-    def test_lock_timeout_reported_not_raised(self, state_dir, monkeypatch):
+    def test_lock_timeout_reported_not_raised(self, state_dir, monkeypatch,
+                                             windows_lock_branch):
         """锁始终被占：超时如实转错误串，调用方能回报给请求方。"""
         _patch_clock(monkeypatch)
         lock_path = _overlay_path(state_dir).with_name(
@@ -227,7 +238,8 @@ class TestCasErrorBranches:
 
 class TestLowLevelAccess:
 
-    def test_lock_stat_race_not_stale_then_timeout(self, state_dir, monkeypatch):
+    def test_lock_stat_race_not_stale_then_timeout(self, state_dir, monkeypatch,
+                                                   windows_lock_branch):
         """锁文件在 open 与 stat 之间消失（竞态）：stat 失败时 age=timeout+1=16，
         **不满足 >30 的陈旧线**——真实行为是继续自旋直到超时如实报错。
         （若把 16 当陈旧去抢，会让并发写者在锁存续期间闯入，比超时更糟。）"""
