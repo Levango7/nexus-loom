@@ -48,6 +48,10 @@ class TestClaimExtraction:
         claims = agent._extract_claims(content)
         assert len(claims) == 1
         assert "6000" in claims[0]
+        # 超 300 字的长句即使带数字也不该被当成声明（防长段落整段灌入）
+        overlong = "该指标在长期运行中保持稳定增长并持续优化，增长率为42%，" * 12
+        assert len(overlong) > 300
+        assert agent._extract_claims(overlong) == []
 
     def test_max_claims_cap(self, agent):
         agent._max_claims = 3
