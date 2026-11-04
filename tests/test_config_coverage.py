@@ -373,4 +373,7 @@ class TestDottedWrites:
 
     def test_revision_floor_is_zero(self):
         center = ConfigCenter()
-        assert center.revision == 0, "从未见覆写时 revision 报 0 而非 -1"
+        # 构造时 _merge_overlay 已把 revision 置 0（覆写文件缺失也是 0），直接断言等于没测到兜底；
+        # 压回 -1 才真正走一次 max(..., 0)。
+        center._overlay_revision = -1
+        assert center.revision == 0, "覆写 revision 未知（-1）时对外应报 0"
