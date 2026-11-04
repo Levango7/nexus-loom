@@ -1127,8 +1127,8 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3432 个测试本机全绿**（`3432 passed, 24 skipped, 6 deselected`，2026-11-04 按 +35 条
-（mcp_server 覆盖缺口补强）自 3397 同 skipped 集推为；2026-11-02 实测基线
+**3459 个测试本机全绿**（`3459 passed, 24 skipped, 6 deselected`，2026-11-04 按 +27 条
+（config.py 分支补全）自 3432 同 skipped 集推为；2026-11-02 实测基线
 耗时 32 分 49 秒 / 1969.75s——main 树上是 25 分 49 秒 / 1549.45s（收集 3307），
 同日（2026-11-03）+27/+18 两批在旧基线上的全量实测是 33 分 14 秒 / 1994.02s，
 更早同机负载重时是 31 分 19 秒 / 1879.43s、52 分 12 秒 / 3132.00s，这个量级随负载浮动，别拿去当基准；
@@ -1157,14 +1157,17 @@ shutdown 所有权 / resume 一次性认领（跑完即清位）/ principal 透�
 （含淘汰后退化载荷的 .get 缺省）/ _submit_plan_run 异常分支（plan 解析失败/类型化校验/
 载荷准备/run_plan 异常清临时文件）与 wait=True 全分支 / watcher 终态即停与 done 才落盘 /
 serve() 进程内循环含 -32700 / run_mcp_server 两形态 / 落盘 OSError 如实上报 / 协议层
--32603 兜底）后为 3432 / 收集 3456；
+-32603 兜底）后为 3432 / 收集 3456；+27 条（config.py 分支补全：Windows 锁陈旧抢占与
+超时如实报错 / POSIX fcntl 三分支（借假 fcntl）/ 覆写文件形状错误（顶层非对象、
+revision 非整数）/ CAS 三错误分支与 publish 同族 / 配置文件热加载与坏文件保留旧值 /
+poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算陈旧）后为 3459 / 收集 3483；
 +25 条（llm_router 覆盖缺口补强：共享 aiohttp Session 同 loop 复用/
 跨 loop 返 None/无 aiohttp 回落/atexit 钩子、`_call_llm_async` 的 aiohttp 分支（成功/CF 解包/
 usage 回填/空内容按业务结果上抛不重试/传输故障回退同步）、chat 与 chat_async 全不健康重检
 循环、async preferred/空内容转移下一供应商/成本失败不拖垮、add_provider 重排/from_dict 缺省/
 usage 非 int 不回填）后为 3397 / 收集 3421，
 SKIPPED 集合未变）；
-实际收集 **3456** 条（Windows 本机）/ **3464** 条（Linux CI，多 8 条为 POSIX-only 用例），
+实际收集 **3483** 条（Windows 本机）/ **3491** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
