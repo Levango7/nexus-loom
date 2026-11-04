@@ -126,6 +126,11 @@ class TestLLMProvider:
             result = p.check_health(cooldown=60.0)
         assert result is True
         assert p.healthy is True
+        # 刚过冷却期（90s > 60s，但 < 2×60s）也必须真去检查：窗口不能被放大
+        p._healthy = False
+        p._last_check = time.time() - 90
+        with patch("loom_core.llm_router._call_llm", return_value="ok"):
+            assert p.check_health(cooldown=60.0) is True
 
     def test_check_health_failure_marks_unhealthy(self):
         """健康检查失败后累计失败计数（3 次后才标记不健康）"""
