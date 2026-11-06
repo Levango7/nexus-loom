@@ -1,11 +1,12 @@
-"""手动浏览器门的覆盖度守卫 + mock 与后端契约的同形判据。
+"""浏览器门的覆盖度守卫 + mock 与后端契约的同形判据 + CI 接线判据。
 
-`tests/check_dashboard_browser.py` 是**手动门**（真实 Chrome，pytest 不收集）。它给出的是
-"渲染真的对"的证据，代价是用例被删 / 从没加上时 CI 一条都不会红。C-7（账本面板）和
-C-10（节点检查器投影态）补的都是"扫源码 token 看不出来、只有渲染才看得见"的缺口，
+`tests/check_dashboard_browser.py` 用真实 Chrome 跑渲染判据（pytest 不收集它）。它给出的是
+"渲染真的对"的证据，但历史上只靠人肉执行——用例被删 / 从没加上时 CI 一条都不会红；
+#93 那次前端新增 `/api/schedules` 而门里没补 mock，页面降级成"部分数据不可用"，门照样绿。
+C-7（账本面板）和 C-10（节点检查器投影态）补的都是"扫源码 token 看不出来、只有渲染才看得见"的缺口，
 而那个文件在 CI 里此前**没有任何守卫**。
 
-本文件不冒充"渲染已被 CI 验证"，只做两件事：
+本文件守三件事：
 
 1. **覆盖度**：把门里每条 `print("PASS: ...")` 当成一条已交付用例，断言 ①主题一条不缺、
    ②每条用例在自己之前真有 `expect(`/`assert `（只有 print 没有断言＝假用例）、
@@ -13,6 +14,8 @@ C-10（节点检查器投影态）补的都是"扫源码 token 看不出来、�
 2. **载荷同形**：门里 mock 的投影响应必须与后端 `_node_inspector_from_projection` 的
    真产出逐字段一致——mock 漂移了，门就在验一个不存在的契约，而这种漂移在手动门里
    永远看不出来。
+3. **接线**：`ci.yml` 必须真有一步在跑这个脚本并交代浏览器来源；否则前两层只在有人
+   手动跑时才生效，"有门"和"门被跑"是两件事。
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ from types import SimpleNamespace
 from tests.check_dashboard_browser import IN_MEMORY_NODE_PAYLOAD, PROJECTION_NODE_PAYLOAD
 
 GATE = Path(__file__).resolve().parent / "check_dashboard_browser.py"
+CI_YML = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci.yml"
 
 PASS_RE = re.compile(r'print\("PASS: ([^"]+)"\)')
 
@@ -102,6 +106,36 @@ class TestGateCoverage:
         """
         name = GATE.name
         assert not name.startswith("test_") and not name.endswith("_test.py")
+
+
+class TestGateWiring:
+    """这门自己有没有被 CI 接上——"人记得跑才算数"的门等于没有门。"""
+
+    def test_ci_invokes_the_gate_with_a_real_browser(self):
+        import yaml
+
+        ci = yaml.safe_load(CI_YML.read_text(encoding="utf-8"))
+        commands = []
+        for job in ci["jobs"].values():
+            for step in job.get("steps", []):
+                for line in str(step.get("run", "")).splitlines():
+                    parts = line.strip().split()
+                    if len(parts) > 1 and parts[0].startswith("python") \
+                            and GATE.name in (p.rsplit("/", 1)[-1] for p in parts):
+                        commands.append(line.strip())
+        assert commands, (
+            f"ci.yml 里没有任何一步真在跑 {GATE.name}——浏览器门退回手动执行，"
+            "前端换数据源忘补 mock 又会静默降级（#93 那次就是这个形状）"
+        )
+        job_text = CI_YML.read_text(encoding="utf-8")
+        for command in commands:
+            tokens = command.split()
+            browser_source = ("--channel" in tokens) or ("playwright install" in job_text)
+            assert browser_source, (
+                f"{command!r} 没交代浏览器从哪来：runner 上没装浏览器时这一步会直接报错，"
+                "而不是静默跳过——但如果它被改成条件跳过，门就又没人守了"
+            )
+
 
 
 class _FakeRunHandle:

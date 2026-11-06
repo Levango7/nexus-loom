@@ -1127,7 +1127,8 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3530 个测试本机全绿**（`3530 passed, 24 skipped, 6 deselected`，2026-11-04 按 +71 条
+**3531 个测试本机全绿**（`3531 passed, 24 skipped, 6 deselected`，2026-11-05 按 +1 条
+（浏览器门接进 CI 的接线判据）自 3530 同 skipped 集推为；上一轮 2026-11-04 按 +71 条
 （dag_executor 覆盖补强）自 3459 同 skipped 集推为；2026-11-02 实测基线
 耗时 32 分 49 秒 / 1969.75s——main 树上是 25 分 49 秒 / 1549.45s（收集 3307），
 同日（2026-11-03）+27/+18 两批在旧基线上的全量实测是 33 分 14 秒 / 1994.02s，
@@ -1153,7 +1154,12 @@ Schedules 面：后端 GET /api/schedules 真 HTTP 4 + 前端接线 4）后为 3
 读错回落缺省）/ `_maybe_gc` 失败只告警 / `refresh_config` 三分支 / orchestrator 懒构建与
 shutdown 所有权 / resume 一次性认领（跑完即清位）/ principal 透传 owner / 锁不匹配如实
 拒绝 / reclaim 失败不退出 / CLI 缺省面与 `--once`、`--idle-timeout` 两条路径 + 信号 handler）
-后为 3372 / 收集 3396；+35 条（mcp_server 覆盖缺口补强：get_task/list_tasks/get_pipeline_info 三读工具直测
+后为 3372 / 收集 3396；
++25 条（llm_router 覆盖缺口补强：共享 aiohttp Session 同 loop 复用/
+跨 loop 返 None/无 aiohttp 回落/atexit 钩子、`_call_llm_async` 的 aiohttp 分支（成功/CF 解包/
+usage 回填/空内容按业务结果上抛不重试/传输故障回退同步）、chat 与 chat_async 全不健康重检
+循环、async preferred/空内容转移下一供应商/成本失败不拖垮、add_provider 重排/from_dict 缺省/
+usage 非 int 不回填）后为 3397 / 收集 3421；+35 条（mcp_server 覆盖缺口补强：get_task/list_tasks/get_pipeline_info 三读工具直测
 （含淘汰后退化载荷的 .get 缺省）/ _submit_plan_run 异常分支（plan 解析失败/类型化校验/
 载荷准备/run_plan 异常清临时文件）与 wait=True 全分支 / watcher 终态即停与 done 才落盘 /
 serve() 进程内循环含 -32700 / run_mcp_server 两形态 / 落盘 OSError 如实上报 / 协议层
@@ -1167,13 +1173,10 @@ poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算�
 成功/熔断与 fail_fast）/ 重试三路径（退避期取消、全局停止、process 重试超时不回落
 父进程）/ task 输出读写三级回退与家族名 / 条件上下文与别名去重 / 审批闸门 / 续传复用
 与增量合并 / 侧信道（checkpoint/audit/限流/熔断计数））后为 3530 / 收集 3554；
-+25 条（llm_router 覆盖缺口补强：共享 aiohttp Session 同 loop 复用/
-跨 loop 返 None/无 aiohttp 回落/atexit 钩子、`_call_llm_async` 的 aiohttp 分支（成功/CF 解包/
-usage 回填/空内容按业务结果上抛不重试/传输故障回退同步）、chat 与 chat_async 全不健康重检
-循环、async preferred/空内容转移下一供应商/成本失败不拖垮、add_provider 重排/from_dict 缺省/
-usage 非 int 不回填）后为 3397 / 收集 3421，
++1 条（浏览器门接进 CI 的接线判据：ci.yml 必须真有一步在跑 `check_dashboard_browser.py`
+并按 token 交代浏览器来源，否则前两层守卫只在有人手动跑时才生效）后为 3531 / 收集 3555，
 SKIPPED 集合未变）；
-实际收集 **3554** 条（Windows 本机）/ **3562** 条（Linux CI，多 8 条为 POSIX-only 用例），
+实际收集 **3555** 条（Windows 本机）/ **3563** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
@@ -1337,7 +1340,8 @@ Schema 校验、Lockfile 与 edges 一致性、消息总线（含幂等去重的
 成本追踪、告警机制、质量闭环、MCP Server、OpenAPI Spec、Agent 沙箱、
 配置热更新、kb-docgen 离线端到端、运行态路径隔离。
 
-控制台浏览器回归（独立于 pytest 计数，需安装 Playwright 与 Chrome）：
+控制台浏览器回归（独立于 pytest 计数，需安装 Playwright 与 Chrome；CI 每次 PR 与 main push
+都跑 `dashboard-browser-gate` 这一门）：
 
 ```bash
 python -m pip install playwright
