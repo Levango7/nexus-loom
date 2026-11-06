@@ -1886,11 +1886,15 @@ class PipelineOrchestrator:
     # ─── 查询 ─────────────────────────────
 
     def resolve_pipeline_name(self, requested: str = "") -> tuple[str, str]:
-        """跑哪条流水线：默认值来自 config.default_pipeline，歧义不猜。"""
-        from .scheduler import Scheduler, resolve_pipeline_name
+        """跑哪条流水线：默认值来自 config.default_pipeline，歧义不猜。
+
+        `installed_pipelines` 是 `scheduler` 的**模块级**函数（类上没有同名方法），
+        与 admin_api / mcp_server 的口径保持一致。
+        """
+        from .scheduler import installed_pipelines, resolve_pipeline_name
         return resolve_pipeline_name(
             requested,
-            Scheduler.installed_pipelines(),
+            installed_pipelines(),
             str(self.config.get("default_pipeline", "") or ""),
         )
 
