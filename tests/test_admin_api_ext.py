@@ -197,15 +197,39 @@ class TestDoGetRouting:
                 self._get(handler, path)
                 assert mock_m.called, f"{path} 未路由到 {method}"
 
-    def test_task_routes(self, handler):
-        for suffix, method in [("", "_handle_get_task"),
-                               ("/cancel", "_handle_cancel_task"),
-                               ("/rerun", "_handle_rerun_task"),
-                               ("/pause", "_handle_pause_task"),
-                               ("/resume", "_handle_resume_task")]:
-            with patch.object(AdminHandler, method, autospec=True) as mock_m:
-                self._get(handler, f"/tasks/t-001{suffix}")
-                assert mock_m.called, f"suffix {suffix!r} 未路由"
+    def test_task_detail_route(self, handler):
+        """`/tasks/<id>` 详情仍然是 GET（动作端点的 GET 已改 405，见下一例）"""
+        with patch.object(AdminHandler, "_handle_get_task", autospec=True) as mock_m:
+            self._get(handler, "/tasks/t-001")
+            assert mock_m.called
+
+    #: F2 覆盖的动作端点（spec 里只有 post）
+    _ACTIONS = ("cancel", "rerun", "pause", "resume", "approve", "reject")
+    _ACTION_HANDLERS = ("_handle_cancel_task", "_handle_rerun_task", "_handle_pause_task",
+                        "_handle_resume_task", "_handle_approve_task", "_handle_reject_task")
+
+    def test_task_action_routes_reject_get(self, handler):
+        """F2（2026-11-07）：动作端点 spec 里只有 post ⇒ GET 必须 405 + `Allow: POST`。
+
+        本用例原先断言 GET 会路由到 `_handle_cancel_task` 等——**那正是缺陷本身**：
+        GET 会静默执行状态变更（`/rerun` 真的再跑一遍 = 花钱），而 `approve`/`reject`
+        更隐蔽，会落到 `/tasks/<id>` 详情分支返回 200 + 任务详情，让误用 GET 的调用方
+        以为"已放行"。断言方向因此整体反过来：不改状态、不给假成功、明确说清该用什么动词。
+        """
+        for action in self._ACTIONS:
+            handler._json.reset_mock()
+            for method in self._ACTION_HANDLERS + ("_handle_get_task",):
+                setattr(handler, method, MagicMock())
+            self._get(handler, f"/tasks/t-001/{action}")
+            handler._json.assert_called_once()
+            _, kwargs = handler._json.call_args
+            assert kwargs.get("status") == 405, \
+                f"/{action} 未回 405（实际 {handler._json.call_args}）"
+            assert (kwargs.get("headers") or {}).get("Allow") == "POST", \
+                f"/{action} 的 405 缺 `Allow: POST`"
+            for method in self._ACTION_HANDLERS + ("_handle_get_task",):
+                assert not getattr(handler, method).called, \
+                    f"/{action} 仍被 GET 执行或回落到详情（{method}）"
 
     def test_invalid_task_id_400(self, handler):
         self._get(handler, "/tasks/../../etc")

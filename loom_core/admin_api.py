@@ -10,6 +10,8 @@ Admin API v1 - 轻量级 REST API（零外部依赖）
   POST /api/tasks           → 提交新文档生成任务（body: query/title/pipeline/wait/output）
   POST /tasks/<id>/cancel   → 取消任务
   POST /tasks/<id>/rerun    → 重跑流水线（复用上一次 plan + 输入）
+  （上列 `/tasks/<id>/<动作>` 一律只有 POST：收到 GET 时回 405 + `Allow: POST`，
+    既不改状态，也不借详情路由返回 200——见 `_POST_ONLY_TASK_ACTIONS`）
   GET  /agents              → 已注册 agent 列表
   GET  /api/agents/<name>   → 单个 agent 详情（含 stats/meta）
   GET  /api/config          → 运行时配置快照
@@ -21,6 +23,7 @@ Admin API v1 - 轻量级 REST API（零外部依赖）
   DELETE /api/events/hooks/<id> → 注销事件钩子
   GET  /dlq                 → 死信队列
   POST /dlq/<id>/replay     → 重放死信
+  GET  /dlq/<id>/replay     → 重放死信（与 POST 同义；同样要求 X-Confirm: yes）
   GET  /stream?task_id=<id>&query=...  → SSE 流式推送文档生成进度
 
 鉴权：
@@ -30,9 +33,13 @@ Admin API v1 - 轻量级 REST API（零外部依赖）
 
 危险操作二次确认：
   - POST /api/config、/api/cache/clear、/api/versions/rollback、/dlq/<id>/replay
-    （GET 同）除鉴权外必须携带请求头 `X-Confirm: yes`，缺失返回
+    除鉴权外必须携带请求头 `X-Confirm: yes`，缺失返回
     428 Precondition Required；执行时输出结构化审计日志
     （时间/key 身份/操作/参数摘要）
+  - 这四条里**只有 `/dlq/<id>/replay` 另有等价的 GET 形式**（同样要求 `X-Confirm: yes`，
+    见上方端点表）；此前这里写作笼统的「（GET 同）」，与实现不符——
+    `GET /api/config`、`GET /api/cache/clear`、`GET /api/versions/rollback`
+    都不受理，会走到各自的 405/404。
 """
 from __future__ import annotations
 
@@ -81,6 +88,13 @@ _QS_TOKEN_RE = re.compile(r"(token=)[^&\s]+")
 # 请求体大小上限（S4）：防 Content-Length 任意值直接 read 的内存 DoS。
 # 合法请求（任务提交/回滚/钩子注册均为 JSON 文本）远低于 1 MB，取 10 MB 留余量。
 _MAX_BODY_BYTES = 10 * 1024 * 1024
+
+# `/tasks/<id>/<动作>` 里**只声明 POST** 的动作（与 openapi_spec.py 的声明同源）。
+# GET 命中它们必须是 405 + `Allow: POST`，不允许走另外两条路：
+#   1) 执行状态变更——`/rerun` 会真的再跑一遍流水线（= 真花钱），`/cancel` 会真的停任务；
+#   2) 回落到 `/tasks/<id>` 的详情分支——那会返回 200 + 任务详情，让误用 GET 的调用方
+#      以为"已取消 / 已放行"而实际什么都没发生（静默假成功，比报错更难查）。
+_POST_ONLY_TASK_ACTIONS = frozenset({"cancel", "rerun", "pause", "resume", "approve", "reject"})
 
 
 def mask_token_query(text: str) -> str:
@@ -476,14 +490,26 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", allowed)
             self.send_header("Vary", "Origin")
 
-    def _json(self, data: dict, status: int = 200):
+    def _json(self, data: dict, status: int = 200, headers: dict | None = None):
         body = _fast_dumps(data, default=str).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self._apply_cors_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _method_not_allowed(self, allow: str = "POST"):
+        """405 + `Allow`：把"路径对、动词错"讲明白，而不是让它看起来像路径不存在。
+
+        用 405 而非通用 404 是为了可诊断性：调用方（SDK/脚本/curl）能据此直接把动词改成
+        `allow` 给出的那个，而不是去别处找路径。对 `/tasks/<id>/<动作>` 这类只有 POST 的
+        端点尤其要紧——它们此前会被 GET 静默接走（见 `_POST_ONLY_TASK_ACTIONS`）。
+        """
+        self._json({"error": f"method not allowed; this endpoint takes {allow}"},
+                   status=405, headers={"Allow": allow})
 
     def _prometheus(self, text: str):
         body = text.encode()
@@ -806,23 +832,27 @@ class AdminHandler(BaseHTTPRequestHandler):
             elif self.path == "/tasks":
                 self._handle_list_tasks()
             elif self.path.startswith("/tasks/"):
-                task_id = self.path.split("/tasks/")[1].split("/")[0]
+                # 剥一次 query 再切段：原先动作判定写的是 `self.path.endswith("/cancel")`，
+                # 带 query 时（`/tasks/<id>/cancel?token=K`，query token 是文档化的鉴权形式）
+                # 会静默失配、回落到**详情**查询——动作路由与详情路由互相串门，且两边都不报错。
+                raw = self.path.split("?", 1)[0]
+                segs = raw.split("/")
+                task_id = segs[2] if len(segs) > 2 else ""
                 if not _validate_task_id(task_id):
                     return self._json({"error": "invalid task id"}, 400)
                 # S3 节点检查器：/tasks/<id>/nodes/<name>（静态段优先于动作段匹配）
-                if "/nodes/" in self.path:
-                    node_name = self.path.split("/nodes/", 1)[1].split("?", 1)[0]
+                if "/nodes/" in raw:
+                    node_name = raw.split("/nodes/", 1)[1]
                     return self._handle_node_inspector(task_id, node_name)
-                if self.path.endswith("/cancel"):
-                    self._handle_cancel_task(task_id)
-                elif self.path.endswith("/rerun"):
-                    self._handle_rerun_task(task_id)
-                elif self.path.endswith("/pause"):
-                    self._handle_pause_task(task_id)
-                elif self.path.endswith("/resume"):
-                    self._handle_resume_task(task_id)
-                else:
-                    self._handle_get_task(task_id)
+                action = segs[3] if len(segs) > 3 else ""
+                if action in _POST_ONLY_TASK_ACTIONS:
+                    # spec 里这些端点只有 post（openapi_spec.py `/tasks/{task_id}/<动作>`）
+                    return self._method_not_allowed("POST")
+                if action:
+                    # 其余未知动作段：不再回落到详情——`/tasks/<id>/approve` 曾经因此返回
+                    # 200 + 详情，调用方会当成"审批已放行"。
+                    return self._json({"error": "not found"}, 404)
+                self._handle_get_task(task_id)
             elif self.path == "/agents":
                 self._handle_list_agents()
             elif self.path.startswith("/api/agents/"):
@@ -956,25 +986,31 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self._handle_create_run(wf_route[0], body)
                 return
             if self.path.startswith("/tasks/"):
-                task_id = self.path.split("/tasks/")[1].split("/")[0]
+                # 与 do_GET 同一口径剥 query 再切段：原先 `self.path.endswith("/cancel")`
+                # 在带 query 时失配（`POST /tasks/<id>/cancel?token=K` 会被判成"方法不允许"），
+                # 而 query token 是文档化的鉴权形式。
+                raw = self.path.split("?", 1)[0]
+                segs = raw.split("/")
+                task_id = segs[2] if len(segs) > 2 else ""
                 if not _validate_task_id(task_id):
                     return self._json({"error": "invalid task id"}, 400)
-                if self.path.endswith("/cancel"):
+                action = segs[3] if len(segs) > 3 else ""
+                if action == "cancel":
                     self._handle_cancel_task(task_id)
                     return
-                elif self.path.endswith("/rerun"):
+                elif action == "rerun":
                     self._handle_rerun_task(task_id)
                     return
-                elif self.path.endswith("/pause"):
+                elif action == "pause":
                     self._handle_pause_task(task_id)
                     return
-                elif self.path.endswith("/resume"):
+                elif action == "resume":
                     self._handle_resume_task(task_id)
                     return
-                elif self.path.endswith("/approve"):
+                elif action == "approve":
                     self._handle_approve_task(task_id, body)
                     return
-                elif self.path.endswith("/reject"):
+                elif action == "reject":
                     self._handle_reject_task(task_id, body)
                     return
             elif self.path == "/api/versions/rollback":
