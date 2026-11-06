@@ -59,6 +59,25 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
+### Tests（2026-11-05，浏览器门从"人肉才算数"接进 CI，并给这条接线本身加判据）
+
+`tests/check_dashboard_browser.py` 给的是"渲染真的对"的证据，但它此前只在本地跑：
+#93 前端新增 `GET /api/schedules` 而门里没补 mock 时，页面降级成"部分数据不可用"，
+**门照样绿**（后来靠 `assert not unmocked` 补住结构，但仍要有人手动跑才算数）。
+
+- **CI 新增 `dashboard-browser-gate` job**（`ubuntu-latest`，`needs: test`，PR 与 main push 都跑）：
+  钉 `playwright==1.60.0`（本机实跑过的组合，同 test job 的钉版教训），用 runner 预装的
+  Chrome 走 `--channel chrome`，不额外下载浏览器。
+- **接线判据**（`tests/test_browser_gate.py` +1，共 8 条）：解析 `ci.yml` 断言确有一步在跑
+  `check_dashboard_browser.py`，且按 token 交代浏览器来源（`--channel` 或 `playwright install`）。
+  射程自证 4 条变异全 RED：把该步换成 `echo` / 改脚本名 / 去掉 `--channel` / 整步注释掉
+  （注释那条形同"子串还在"，靠 token 判定才抓得住）；未变异对照 GREEN，字节级还原 sha 一致。
+- **门自身反向复验**：临时把 `/api/schedules` 的 mock 改名后门当场红（`GATE_RC=1`，
+  红在 `#last-updated` 的"部分数据不可用"），还原 sha 一致——证明这门不是摆设。
+- 顺带订正 README 计数链：`llm_router` 的 `+25 条 …后为 3397/收集 3421` 一段此前被追加在链尾
+  （读起来像"3530 之后少了 133 条"），按其算术挪回 `3372` 与 `+35` 之间；**只搬位置，没改任何数字**。
+  本批 +1 条判据 ⇒ 3531 passed / 收集 3555（Windows）/ 3563（Linux CI）。
+
 ### Tests（2026-11-02，节点检查器投影态：前端换文案这件事终于有判据）
 
 #87 把"跨进程运行从 RunStore 投影答"修好了，后端契约有判据
@@ -77,6 +96,7 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   当成一条已交付用例，断言 ①主题一条不缺 ②每条用例的 PASS 之前最后一句可执行语句必须是
   断言（判"两个 PASS 之间有 expect"太松——前置 setup 行会替被删的断言兜底）③投影态正反两面
   都在。**它挡的是"用例被删/断言被删"，不冒充"渲染已被 CI 验证"**：浏览器门仍然只在本机跑。
+  （2026-11-05 订正：这句已经过期——门已接进 CI 的 `dashboard-browser-gate`，见上面那条。）
 - **mock 与后端同形**：门里 mock 的投影响应必须与 `_node_inspector_from_projection` 的真产出
   逐字段一致——mock 一漂移，门就在验一个不存在的契约，而那种漂移在手动门里永远看不出来。
 - 窄变异 5 条全 RED（前端判定写死 false / 写死 true / 删掉用例最后一条断言 / 整块删用例 /

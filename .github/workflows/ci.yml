@@ -198,6 +198,33 @@ jobs:
           docker build -t doc-pipeline:ci .
           echo "DOCKER BUILD OK"
 
+  # 这门此前只在人肉执行时才算数：#93 给前端加了 GET /api/schedules 而门里没补 mock，
+  # 页面降级成「部分数据不可用」而门照样绿。挂进 CI 后这类静默降级当场红。
+  # ubuntu runner 预装 Google Chrome ⇒ 用 --channel chrome，不额外下载浏览器。
+  dashboard-browser-gate:
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install playwright
+        run: |
+          python -m pip install --upgrade pip
+          # 钉本机实跑过的组合：浮动安装会随上游发版把门随机打红（同 test job 的教训）。
+          pip install "playwright==1.60.0"
+
+      - name: Dashboard browser gate (real Chrome, static server + mocked API)
+        run: |
+          python tests/check_dashboard_browser.py --channel chrome
+
   perf-regression:
     runs-on: ubuntu-latest
     needs: test
