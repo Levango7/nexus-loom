@@ -1127,8 +1127,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3531 个测试本机全绿**（`3531 passed, 24 skipped, 6 deselected`，2026-11-05 按 +1 条
-（浏览器门接进 CI 的接线判据）自 3530 同 skipped 集推为；上一轮 2026-11-04 按 +71 条
+**3688 个测试本机全绿**（`3688 passed, 24 skipped, 6 deselected`，2026-11-05 按 +1 条
+（浏览器门接进 CI 的接线判据）自 3687 同 skipped 集推为；上一轮 2026-11-05 按 +157 条
+（pipeline.py 降级契约补强；其中 1 条以 xfail 钉住已知产品缺陷
+`resolve_pipeline_name` 调 `Scheduler.installed_pipelines` 不存在）自 3530 同 skipped 集推为；2026-11-04 按 +71 条
 （dag_executor 覆盖补强）自 3459 同 skipped 集推为；2026-11-02 实测基线
 耗时 32 分 49 秒 / 1969.75s——main 树上是 25 分 49 秒 / 1549.45s（收集 3307），
 同日（2026-11-03）+27/+18 两批在旧基线上的全量实测是 33 分 14 秒 / 1994.02s，
@@ -1173,10 +1175,17 @@ poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算�
 成功/熔断与 fail_fast）/ 重试三路径（退避期取消、全局停止、process 重试超时不回落
 父进程）/ task 输出读写三级回退与家族名 / 条件上下文与别名去重 / 审批闸门 / 续传复用
 与增量合并 / 侧信道（checkpoint/audit/限流/熔断计数））后为 3530 / 收集 3554；
++138 条（pipeline.py 降级契约补强：RunStore 建口/开运行/落节点/盖章失败只降级且响亮、
+健康位 degraded、终态事件至多一次、终态记账降级、审批台账 fail-closed 与取消时系统结批、
+闸门布置与结算、观察他进程决定、暂停/取消/恢复、断点与池化合并、交付契约与交付链降级、
+配置热加载与清理关停、入口分支与死信重放）后为 3668 / 收集 3692；
++19 条（委托方法与可视化、列表/统计、回调与审计日志降级、admin API 起停、清理外层兜底、
+无锁 checkpoint 保存；其中 1 条 xfail 钉住 `resolve_pipeline_name` 的类属性缺失缺陷）
+后为 3687 / 收集 3711，
 +1 条（浏览器门接进 CI 的接线判据：ci.yml 必须真有一步在跑 `check_dashboard_browser.py`
-并按 token 交代浏览器来源，否则前两层守卫只在有人手动跑时才生效）后为 3531 / 收集 3555，
+并按 token 交代浏览器来源，否则前两层守卫只在有人手动跑时才生效）后为 3688 / 收集 3712，
 SKIPPED 集合未变）；
-实际收集 **3555** 条（Windows 本机）/ **3563** 条（Linux CI，多 8 条为 POSIX-only 用例），
+实际收集 **3712** 条（Windows 本机）/ **3720** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
@@ -1340,8 +1349,7 @@ Schema 校验、Lockfile 与 edges 一致性、消息总线（含幂等去重的
 成本追踪、告警机制、质量闭环、MCP Server、OpenAPI Spec、Agent 沙箱、
 配置热更新、kb-docgen 离线端到端、运行态路径隔离。
 
-控制台浏览器回归（独立于 pytest 计数，需安装 Playwright 与 Chrome；CI 每次 PR 与 main push
-都跑 `dashboard-browser-gate` 这一门）：
+控制台浏览器回归（独立于 pytest 计数，需安装 Playwright 与 Chrome）：
 
 ```bash
 python -m pip install playwright
