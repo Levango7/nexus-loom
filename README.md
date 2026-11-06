@@ -1185,6 +1185,10 @@ poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算�
 +1 条（浏览器门接进 CI 的接线判据：ci.yml 必须真有一步在跑 `check_dashboard_browser.py`
 并按 token 交代浏览器来源，否则前两层守卫只在有人手动跑时才生效）后为 3688 / 收集 3712，
 SKIPPED 集合未变）；
+（2026-11-06 订正：上面两处提到的那条 xfail 已随 #106 修复转正——`resolve_pipeline_name`
+改调 `scheduler` 的**模块级** `installed_pipelines`，用例去掉 `xfail(strict=True)` 并收紧成
+三条断言（命中请求名 / 空请求落默认 / 不存在返回空名加可读错误）。收集数不变，
+`3688 passed` 自此是字面实测值，不再含 xfailed。）
 实际收集 **3712** 条（Windows 本机）/ **3720** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；

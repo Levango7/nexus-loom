@@ -61,6 +61,25 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [3.17.0] - 2026-11-06
 
+### Fixed（2026-11-06，`resolve_pipeline_name()` 一调就 AttributeError；PR #106，代记）
+
+> 这条由 qoder 代记：#106 改的是 `loom_core/pipeline.py` 与 `tests/test_pipeline_coverage.py`，
+> 没动 CHANGELOG，而发版说明是 `release.yml` 从本文件 awk 抽的——不补就等于这一批修复
+> 在 Release notes 里不存在。**功能与判据归 #106 的作者**，这里只补索引与独立复验。
+
+- `PipelineOrchestrator.resolve_pipeline_name()` 原先调 `Scheduler.installed_pipelines()`，
+  但 `installed_pipelines` 是 `loom_core/scheduler.py` 的**模块级**函数、类上没有同名方法
+  ⇒ 该方法任何调用都必抛 `AttributeError`。生产调用方（admin_api / mcp_server）走的是模块级
+  `resolve_pipeline_name(...)` + `_scheduler_mod.installed_pipelines()`，所以此前没有实际影响，
+  属潜伏缺陷（板上 C-23）。现在该方法对齐到同一条口径。
+- 钉住该缺陷的 `xfail(strict=True)` 去掉，断言从「结果在二选一里」收紧成三条：命中请求名 /
+  空请求落到 `config.default_pipeline` / 不存在时返回空名 + 可读错误（不猜）。
+- **独立复验**（qoder，Windows / 本机 Python）：把产品代码改回 `Scheduler.installed_pipelines()`
+  后该用例必红（`AttributeError: type object 'Scheduler' has no attribute 'installed_pipelines'`），
+  字节级还原后两文件 sha256 与基线一致、复跑转绿——绿/红/还原三点齐。
+- 连带影响 README 计数：`3688 passed` 此前含 1 条 xfailed（3687 passed + 1 xfailed），
+  本批转正后是字面实测值；收集数不变（3712 Windows / 3720 Linux CI）。
+
 ### Tests（2026-11-05，浏览器门从"人肉才算数"接进 CI，并给这条接线本身加判据）
 
 `tests/check_dashboard_browser.py` 给的是"渲染真的对"的证据，但它此前只在本地跑：

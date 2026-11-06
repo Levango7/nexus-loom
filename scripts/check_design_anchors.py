@@ -72,7 +72,9 @@ ANCHORS = [
     ("loom_core/pipeline.py", 1515, "pipeline.finished"),    # _finalize_plan_task_async 内
     ("loom_core/pipeline.py", 1776, "record"),               # _deliver 内 DeliveryLedger().record
     ("loom_core/pipeline.py", 1882, "pipeline.audit"),
-    ("loom_core/pipeline.py", 2049, ".done"),
+    # 2026-11-06：#106（C-23）给 resolve_pipeline_name 的 docstring 加了 4 行，
+    # 只有这一条在其下方，2049→2053；同批其余 pipeline 锚点都在改动点之上，未动。
+    ("loom_core/pipeline.py", 2053, ".done"),
     # 2026-11-06 再钉一次：控制台三面（#90/#91/#93）在 admin_api.py 里加删代码，
     # 这组 10 条整批下移（1072→1074 … 2019→2052，偏移不是常数，按整行文本对齐）。
     ("loom_core/admin_api.py", 671, "get_task"),
