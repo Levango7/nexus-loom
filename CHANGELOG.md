@@ -106,6 +106,27 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 - 窄变异 5 条全 RED（前端判定写死 false / 写死 true / 删掉用例最后一条断言 / 整块删用例 /
   后端把 `max_retries` 改成 0），每条注入后字节级还原并核 sha256。
 
+### Added（2026-11-01/02，控制台三面：Runs 深链 / Settings / Workflows & Schedules；PR #90 #91 #93，代记）
+
+> 这条由 qoder 代 zcode 记：#90/#91/#93 改的是 `admin_api.py` / `dashboard` / `openapi_spec`，
+> 没动 CHANGELOG，而发版说明是 `release.yml` 从本文件按版本段抽的——不补，这三面在 3.17.0
+> 的 Release notes 里就不存在。**功能与判据归各 PR 的作者**，这里只补索引。
+
+- **Runs 面深链**（#91）：`#/runs/<id>` 可直接打开某次运行的详情，列表加状态过滤；
+  视觉改版（浅色精致默认 + `[data-theme=dark]` 可切）与卡片/底布分层；凭据 `TOKEN_KEY`
+  仍只在 sessionStorage，localStorage 只许非凭据偏好键，并反向断言凭据键不得出现。
+- **Settings 面 v1（只读）**（#90）：运行配置快照（key/secret/token/password 一律掩码）、
+  预算（复用 `/api/cost`）、集成（webhook 列表；MCP 与队列没有读端点，界面如实标注）、
+  版本与配置审计。写操作刻意不做，界面写明边界。随后修掉集成行读后端不返回的 `w.url`
+  导致的空箭头（`f59a4d8`，随 #91 合入）。
+- **Workflows & Schedules 面**（#93）：新增只读 `GET /api/schedules`——`lease_state` 三态
+  （held/stale/free）由服务端按时点算好，前端不拿本机时钟自比；store 缺席给空表不编数据。
+  前端新卡：工作流表（`/api/pipeline` 名单 + `/api/locks` 三值锁徽章：一致/漂移/未验证，
+  `matches` 为 null 时不得画成"一致"；漂移行带问题数并指向 `loom plan --diff`）与排程表
+  （cron / 启停 / 上次 / 下次触发 / 租约态；空态如实标注）。OpenAPI 补 `/api/schedules`。
+- 判据：#90 +4、#91 +9、#93 +8，各带真 Chrome 门实测（Settings 11 项、深链/主题/分层
+  11+13+8 项、Workflows 11 项）。
+
 ### Fixed（2026-10-31，控制台审计与节点检查器；PR #87，代记）
 
 > 这条由 qoder 代 zcode 记：#87 改的是 `admin_api.py` / `dashboard` / `openapi_spec`，
@@ -168,6 +189,22 @@ YAML 里 `gc_seconds:` 只写键不给值时读回来是 `None`，旧写法 `int
 2711→2758、`_handle_deliveries` 1894→1941、`_handle_delivery_detail` 1912→1959、
 `_handle_locks` 1972→2019）——这 8 条漂移是 #87 自己往上加代码推出来的，不是 main 的账；
 重钉后实跑 `checked=52 mismatched=0`。
+
+### Security（2026-10-30，SQLite 标识符强制校验；PR #84）
+
+Mimosa 深度审计的 35 条 findings 逐条对源码分诊，唯一真实插值点在 `sqlite_util`：SQL 标识符
+无法参数化，原先靠"调用方只传字面常量"的约定保安全。现在表名/列名必须匹配
+`^[A-Za-z_][A-Za-z0-9_]*$`，动态拼出的值直接 `ValueError`；DDL 类型片段拒绝 `;` `--` `/*`
+等结构字符。真调用方（`task_queue` 4 处、`db_backend` 透传）零改动照常工作；判据 +5。
+
+### Fixed（2026-10-29，交付账本清理只碰终态；PR #81）
+
+`deliveries.cleanup` 的两条 DELETE 没有状态过滤：年龄/数量判据会把**进行中**的账本行删掉，
+而 `run_store.cleanup` 早已是终态口径——两边漂了。现在 `TERMINAL_STATUSES` 自 `run_store`
+引入（单一事实源，两处不得漂），候选先圈定终态行再按双判据并集逐行 DELETE（走
+`db_backend` 双方言，避开自表 `NOT IN (SELECT …)` 的语义坑）。年龄判据对保留集内仍生效、
+`0/0` 仍返回 0。判据 +3：进行中的行连年龄判据都不碰、也不占"最近 N 条"名额、终态三值与
+`run_store` 同源。
 
 ### Docs（2026-10-29，#10：SDK 从"存在"变成"可发现"）
 
