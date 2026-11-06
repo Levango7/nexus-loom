@@ -1381,14 +1381,19 @@ class TestDelegatesAndQueries:
         orch._execution_stats = [{"x": 1}]
         assert orch.get_execution_stats() == [{"x": 1}]
 
-    @pytest.mark.xfail(strict=True,
-                       reason="product bug: Scheduler.installed_pipelines 是模块级函数，"
-                              "类上没有该方法 => 此方法必 AttributeError；"
-                              "产品修复后本用例应立即 xpass 提醒更新")
-    def test_resolve_pipeline_name_delegates(self, orch):
+    def test_resolve_pipeline_name_delegates(self, orch, monkeypatch):
         orch.config = MagicMock()
         orch.config.get.return_value = "default-p"
-        assert orch.resolve_pipeline_name("req")[0] in ("req", "default-p")
+        monkeypatch.setattr("loom_core.scheduler.installed_pipelines",
+                            lambda: ["req", "default-p"])
+        # 命中请求名
+        assert orch.resolve_pipeline_name("req") == ("req", "")
+        # 空请求 ⇒ 落到 config.default_pipeline
+        assert orch.resolve_pipeline_name("") == ("default-p", "")
+        # 不存在 ⇒ 返回空名 + 可读错误（不猜）
+        name, err = orch.resolve_pipeline_name("nope")
+        assert name == ""
+        assert "nope" in err
 
 
 class TestCallbacksAndAuditLog:
