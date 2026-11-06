@@ -1127,7 +1127,9 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3688 个测试本机全绿**（`3688 passed, 24 skipped, 6 deselected`，2026-11-05 按 +1 条
+**3699 个测试本机全绿**（`3699 passed, 24 skipped, 6 deselected`，2026-11-07 按 +11 条
+（F1 路由层修复 + 护栏：`GET /api/alerts` 带 spec 声明的 query 串原来必掉通用 404，
+改为剥 query 前缀分发，并加 11 条从 OpenAPI spec 反推的路由护栏）自 3688 同 skipped 集推为；2026-11-05 按 +1 条
 （浏览器门接进 CI 的接线判据）自 3687 同 skipped 集推为；上一轮 2026-11-05 按 +157 条
 （pipeline.py 降级契约补强；其中 1 条以 xfail 钉住已知产品缺陷
 `resolve_pipeline_name` 调 `Scheduler.installed_pipelines` 不存在）自 3530 同 skipped 集推为；2026-11-04 按 +71 条
@@ -1185,7 +1187,7 @@ poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算�
 +1 条（浏览器门接进 CI 的接线判据：ci.yml 必须真有一步在跑 `check_dashboard_browser.py`
 并按 token 交代浏览器来源，否则前两层守卫只在有人手动跑时才生效）后为 3688 / 收集 3712，
 SKIPPED 集合未变）；
-实际收集 **3712** 条（Windows 本机）/ **3720** 条（Linux CI，多 8 条为 POSIX-only 用例），
+实际收集 **3723** 条（Windows 本机）/ **3731** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
