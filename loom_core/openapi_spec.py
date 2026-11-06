@@ -481,6 +481,20 @@ def _ops_paths() -> dict:
             },
         },
         "/dlq/{dlq_id}/replay": {
+            # GET 形式是**刻意的**，不是漏声明的第二扇门：模块 docstring 与
+            # docs/api.md:28 / :116 都对用户写明"GET 形式同样要求 X-Confirm: yes"，
+            # 实现见 admin_api.do_GET 的 `/dlq/<id>/replay` 分支。它给操作者用 curl
+            # 直接重放用，且被 X-Confirm（自定义头）挡着 ⇒ 浏览器无法免预检触发，
+            # 所以不构成 F2 那类"GET 静默改状态"的跨站面。spec 此前只声明 post，
+            # 属于**漏声明**；这里按实情补齐，使 spec 与实现、文档三者同口径。
+            "get": {
+                "summary": "重放死信（与 POST 同义，同样要求 X-Confirm: yes）",
+                "parameters": [{"name": "dlq_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                "responses": {
+                    "200": {"description": "重放结果"},
+                    "428": {"description": "缺少 X-Confirm: yes"},
+                },
+            },
             "post": {
                 "summary": "重放死信",
                 "parameters": [{"name": "dlq_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
