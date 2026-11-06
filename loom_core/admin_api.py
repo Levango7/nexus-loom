@@ -895,7 +895,7 @@ class AdminHandler(BaseHTTPRequestHandler):
             elif self.path == "/api/openapi.json":
                 from .openapi_spec import generate_spec
                 self._json(generate_spec())
-            elif self.path == "/api/alerts":
+            elif self.path.split("?", 1)[0] == "/api/alerts":
                 if not self._require_admin():
                     return
                 self._handle_alerts()
