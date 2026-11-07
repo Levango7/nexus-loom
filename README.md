@@ -1127,7 +1127,20 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3688 个测试本机全绿**（`3688 passed, 24 skipped, 6 deselected`，2026-11-05 按 +1 条
+**3765 个测试本机全绿**（`3765 passed, 24 skipped, 6 deselected`，2026-11-07 按 +8 条
+（F4/F5 文案契约：非法 JSON 的 400 从两种拼法（`invalid JSON body` 4 处 / `请求体不是合法
+JSON` 3 处）收敛为 `CANONICAL_INVALID_JSON` 一个常量——理由是向 spec 已声明的 400 描述对齐，
+不是「哪边多一个」；`output` 字段两处内部 docstring 改为与 docs/api.md 同口径「只做白名单
+校验，不参与落盘」。判据＝5 条真 HTTP 文案 + 含 JSON 的 400 文案登记表 + spec 描述等值 +
+docstring 口径）自 3757 同 skipped 集推为；同日 2026-11-07 按 +25 条
+（F3 跨源写操作闸：`POST`/`DELETE` 带非白名单 `Origin` ⇒ 403，且被拒请求**不读请求体、
+不碰 orch 写路径**；25 条判据含台账点名的 14 条写面逐一扫 + 真 HTTP 反面对照（无 Origin
+必须放行）+ webhook 入站豁免 + 401 优先于 403 的顺序钉扎）自 3732 同 skipped 集推为；同日 2026-11-07 按 +33 条
+（F2 方法契约：`/tasks/<id>/<动作>` 的 GET 原会静默执行状态变更（`/rerun` 真花钱），
+`approve`/`reject` 更会回落详情路由给出 200 的假成功，现统一为 405 + `Allow: POST`；
+新增 32 条从 spec 反推的方法门 + 1 条旧断言反向订正）自 3699 同 skipped 集推为；同日 2026-11-07 按 +11 条
+（F1 路由层修复 + 护栏：`GET /api/alerts` 带 spec 声明的 query 串原来必掉通用 404，
+改为剥 query 前缀分发，并加 11 条从 OpenAPI spec 反推的路由护栏）自 3688 同 skipped 集推为；2026-11-05 按 +1 条
 （浏览器门接进 CI 的接线判据）自 3687 同 skipped 集推为；上一轮 2026-11-05 按 +157 条
 （pipeline.py 降级契约补强；其中 1 条以 xfail 钉住已知产品缺陷
 `resolve_pipeline_name` 调 `Scheduler.installed_pipelines` 不存在）自 3530 同 skipped 集推为；2026-11-04 按 +71 条
@@ -1188,19 +1201,22 @@ SKIPPED 集合未变）；
 （2026-11-06 订正：上面两处提到的那条 xfail 已随 #106 修复转正——`resolve_pipeline_name`
 改调 `scheduler` 的**模块级** `installed_pipelines`，用例去掉 `xfail(strict=True)` 并收紧成
 三条断言（命中请求名 / 空请求落默认 / 不存在返回空名加可读错误）。选中数不变，
-`3688 passed` 自此是字面实测值，不再含 xfailed——本机全量已复跑证实：
+`3688 passed` 自此是字面实测值，不再含 xfailed——合 #106 后本机全量复跑证实：
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
-口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。）
-实际收集（选中 / 收集）：**3712 / 3718**（Windows 本机）/ **3711 / 3717**（Linux CI，四条腿一致），
-（2026-11-07 订正：原文写「Linux **3720**，多 8 条为 POSIX-only 用例」，**实测不成立**。
-CI run `42261174587`（pytest 8.3.4，Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，四条腿都挂真 PG）
-逐腿读到 `collected 3717 items / 6 deselected / 3711 selected` 与 3700 passed、11 skipped；
-本机同 SHA `--co -q` 读到 `3712/3718`。Linux 比 Windows **少 1 条**，不是多 8 条。
-差的那条已归因到用例：`tests/test_html_backend.py:94` 的
+口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
+再并入批次一（#107–#110，+77 条）后声明的 3765 是同一口径的递推值。）
+实际收集（选中 / 收集）：**3789 / 3795**（Windows 本机，合 main 后 `--co -q` 实测）/
+**3788 / 3794**（Linux CI = Windows − 1，机制见下；逐腿以 CI 日志为准），
+（2026-11-07 订正：原文写「Linux **3797**，多 8 条为 POSIX-only 用例」，**机制不成立**。
+在上一轮 main（`e557a3c`）上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 /
+3.14.10，pytest 8.3.4，都挂真 PG）逐腿读到 `collected 3717 items / 6 deselected / 3711 selected`
+与 3700 passed、11 skipped；本机同 SHA `--co -q` 读到 3712/3718——即 Linux 比 Windows **少 1 条**。
+差的那一条已归因：`tests/test_html_backend.py:94` 的
 `@pytest.mark.parametrize("backend", _available_kernels() or ["modest"])` 按**环境里真能导入的
 selectolax 内核**动态参数化（`_available_kernels()` 在同文件 42–49 行，走生产同一条 `_load` 探测）：
-本机 `modest` + `lexbor` 两个 ⇒ 2 条，CI 只有 `lexbor` ⇒ 1 条。逐文件对账：两侧各 **165** 个测试文件，
-**164** 个计数逐一相等，只有 `test_html_backend.py` 差（本机 10 / CI 9）。
+本机 `modest` + `lexbor` 两个 ⇒ 2 条，CI 只有 `lexbor` ⇒ 1 条；那一轮逐文件对账 165 个文件里
+164 个计数相等，只差这一个。合并批次一后这个前提未变（该文件与那条参数化都没被动过；
+批次一新增的 5 个测试文件里也没有动态参数化），故仍按 −1 记。
 全仓唯一按平台条件的是 `tests/test_requirements_analyzer.py:149` 的
 `skipif(sys.platform != "linux")`，它影响 **skipped**、不影响收集数。）
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`

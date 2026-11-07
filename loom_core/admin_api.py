@@ -10,6 +10,8 @@ Admin API v1 - 轻量级 REST API（零外部依赖）
   POST /api/tasks           → 提交新文档生成任务（body: query/title/pipeline/wait/output）
   POST /tasks/<id>/cancel   → 取消任务
   POST /tasks/<id>/rerun    → 重跑流水线（复用上一次 plan + 输入）
+  （上列 `/tasks/<id>/<动作>` 一律只有 POST：收到 GET 时回 405 + `Allow: POST`，
+    既不改状态，也不借详情路由返回 200——见 `_POST_ONLY_TASK_ACTIONS`）
   GET  /agents              → 已注册 agent 列表
   GET  /api/agents/<name>   → 单个 agent 详情（含 stats/meta）
   GET  /api/config          → 运行时配置快照
@@ -21,6 +23,7 @@ Admin API v1 - 轻量级 REST API（零外部依赖）
   DELETE /api/events/hooks/<id> → 注销事件钩子
   GET  /dlq                 → 死信队列
   POST /dlq/<id>/replay     → 重放死信
+  GET  /dlq/<id>/replay     → 重放死信（与 POST 同义；同样要求 X-Confirm: yes）
   GET  /stream?task_id=<id>&query=...  → SSE 流式推送文档生成进度
 
 鉴权：
@@ -28,11 +31,22 @@ Admin API v1 - 轻量级 REST API（零外部依赖）
   - 客户端需在 Header 携带 `Authorization: Bearer <key>`
   - /health 和静态资源免鉴权
 
+跨源写操作：
+  - `POST` / `DELETE` 若带 `Origin` 且不在白名单（`ADMIN_CORS_ORIGINS` 显式配置 /
+    与 `Host` 头同源 / 回环地址且端口与本服务一致）⇒ 403
+    `{"error": "cross-origin request rejected"}`。不带 `Origin` 的客户端
+    （SDK / curl / 脚本）不受影响；`/api/webhooks` 入站端点豁免。
+    背景：CORS 只拦"浏览器读响应"，不拦请求**执行**——跨站简单请求会照常到达并生效。
+
 危险操作二次确认：
   - POST /api/config、/api/cache/clear、/api/versions/rollback、/dlq/<id>/replay
-    （GET 同）除鉴权外必须携带请求头 `X-Confirm: yes`，缺失返回
+    除鉴权外必须携带请求头 `X-Confirm: yes`，缺失返回
     428 Precondition Required；执行时输出结构化审计日志
     （时间/key 身份/操作/参数摘要）
+  - 这四条里**只有 `/dlq/<id>/replay` 另有等价的 GET 形式**（同样要求 `X-Confirm: yes`，
+    见上方端点表）；此前这里写作笼统的「（GET 同）」，与实现不符——
+    `GET /api/config`、`GET /api/cache/clear`、`GET /api/versions/rollback`
+    都不受理，会走到各自的 405/404。
 """
 from __future__ import annotations
 
@@ -81,6 +95,25 @@ _QS_TOKEN_RE = re.compile(r"(token=)[^&\s]+")
 # 请求体大小上限（S4）：防 Content-Length 任意值直接 read 的内存 DoS。
 # 合法请求（任务提交/回滚/钩子注册均为 JSON 文本）远低于 1 MB，取 10 MB 留余量。
 _MAX_BODY_BYTES = 10 * 1024 * 1024
+
+# `/tasks/<id>/<动作>` 里**只声明 POST** 的动作（与 openapi_spec.py 的声明同源）。
+# GET 命中它们必须是 405 + `Allow: POST`，不允许走另外两条路：
+#   1) 执行状态变更——`/rerun` 会真的再跑一遍流水线（= 真花钱），`/cancel` 会真的停任务；
+#   2) 回落到 `/tasks/<id>` 的详情分支——那会返回 200 + 任务详情，让误用 GET 的调用方
+#      以为"已取消 / 已放行"而实际什么都没发生（静默假成功，比报错更难查）。
+_POST_ONLY_TASK_ACTIONS = frozenset({"cancel", "rerun", "pause", "resume", "approve", "reject"})
+
+#: 「请求体不是合法 JSON」的**唯一**写法（F4，2026-11-07）。
+#:
+#: 同一个条件此前有两种文案：`invalid JSON body`（4 处：/api/tasks、/api/workflows/{name}/runs、
+#: /api/config、/api/events/hooks）与 `请求体不是合法 JSON`（3 处：/api/versions/rollback、
+#: approve、reject）。后果很实在：前端两串都不匹配（只能原样透传 `error`），且**同一个用户
+#: 动作在不同端点看到不同话术**。收敛到这一条的理由不是"哪边多一个"（英文实际更多），而是：
+#: `openapi_spec.py` 已经把「请求体不是合法 JSON」写成 approve/reject 的 **400 文档化描述**
+#: ——spec 是权威契约，实现该向它对齐；且控制台/CLI/文档整体是中文口径。
+#:
+#: 收敛成一个常量而不是继续散写字面量：想再写第二种拼法必须显式改这里。
+CANONICAL_INVALID_JSON = "请求体不是合法 JSON"
 
 
 def mask_token_query(text: str) -> str:
@@ -476,14 +509,64 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", allowed)
             self.send_header("Vary", "Origin")
 
-    def _json(self, data: dict, status: int = 200):
+    def _json(self, data: dict, status: int = 200, headers: dict | None = None):
         body = _fast_dumps(data, default=str).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self._apply_cors_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _require_same_origin(self) -> bool:
+        """跨源写操作闸：Origin 存在且不在白名单 ⇒ 403（无 Origin 头 ⇒ 放行）。
+
+        为什么 CORS 头不够：CORS 只管"浏览器能不能**读**响应"，**不管请求会不会被执行**。
+        一个跨站页面用 `<form>` / `<img>` 或 `fetch(..., {mode:'no-cors'})` 就能发出
+        **简单请求**，请求照常到达、照常生效（默认部署是本机信任模式，连凭据都不需要），
+        攻击者只是读不到响应而已。所以写操作必须在**服务端**按 Origin 自己拦一道，
+        而不是指望浏览器。
+
+        判据复用 CORS 白名单 `_allowed_origin`（`ADMIN_CORS_ORIGINS` 显式配置 / 与
+        `Host` 头同源 / 回环地址且端口与本服务一致），因此：
+
+        - **不误伤 dashboard**：控制台由本服务同端口提供 ⇒ Origin = `http://<host>:<port>`
+          命中回环同端口或 Host 同源规则；
+        - **不误伤 SDK / curl / 脚本**：浏览器发 POST 必带 `Origin`，非浏览器客户端
+          默认不带 ⇒ 无 Origin 头直接放行；
+        - **豁免入站 webhook**：`/api/webhooks` 在鉴权门之前就 return 了（外部服务直连，
+          本就不该受浏览器同源规则约束）。
+
+        本闸置于 `_check_auth()` **之后**：未通过鉴权仍先回 401（不改既有鉴权契约，
+        也不泄露"这个源有没有被拒绝"）。
+        """
+        origin = (self.headers.get("Origin") or "").strip()
+        if not origin:
+            return True
+        if self._allowed_origin(origin):
+            return True
+        with contextlib.suppress(Exception):
+            from .observability import get_logger
+            # 单条消息、自行格式化：`StructuredLogger.warning(msg, **kw)` 只收**一个**位置参数，
+            # 写成 printf 风格的多位置参数会在运行时 TypeError —— 而它被上面的
+            # `contextlib.suppress` 静默吞掉，本机测试全绿也发现不了。CI 的 mypy 门
+            # （`call-arg`）正是逮这个的，本地验证配方已把 mypy 补进去。
+            get_logger().warning(
+                f"[AdminAPI] 拒绝跨源写请求: {self.path} Origin={origin}")
+        self._json({"error": "cross-origin request rejected"}, 403)
+        return False
+
+    def _method_not_allowed(self, allow: str = "POST"):
+        """405 + `Allow`：把"路径对、动词错"讲明白，而不是让它看起来像路径不存在。
+
+        用 405 而非通用 404 是为了可诊断性：调用方（SDK/脚本/curl）能据此直接把动词改成
+        `allow` 给出的那个，而不是去别处找路径。对 `/tasks/<id>/<动作>` 这类只有 POST 的
+        端点尤其要紧——它们此前会被 GET 静默接走（见 `_POST_ONLY_TASK_ACTIONS`）。
+        """
+        self._json({"error": f"method not allowed; this endpoint takes {allow}"},
+                   status=405, headers={"Allow": allow})
 
     def _prometheus(self, text: str):
         body = text.encode()
@@ -806,23 +889,27 @@ class AdminHandler(BaseHTTPRequestHandler):
             elif self.path == "/tasks":
                 self._handle_list_tasks()
             elif self.path.startswith("/tasks/"):
-                task_id = self.path.split("/tasks/")[1].split("/")[0]
+                # 剥一次 query 再切段：原先动作判定写的是 `self.path.endswith("/cancel")`，
+                # 带 query 时（`/tasks/<id>/cancel?token=K`，query token 是文档化的鉴权形式）
+                # 会静默失配、回落到**详情**查询——动作路由与详情路由互相串门，且两边都不报错。
+                raw = self.path.split("?", 1)[0]
+                segs = raw.split("/")
+                task_id = segs[2] if len(segs) > 2 else ""
                 if not _validate_task_id(task_id):
                     return self._json({"error": "invalid task id"}, 400)
                 # S3 节点检查器：/tasks/<id>/nodes/<name>（静态段优先于动作段匹配）
-                if "/nodes/" in self.path:
-                    node_name = self.path.split("/nodes/", 1)[1].split("?", 1)[0]
+                if "/nodes/" in raw:
+                    node_name = raw.split("/nodes/", 1)[1]
                     return self._handle_node_inspector(task_id, node_name)
-                if self.path.endswith("/cancel"):
-                    self._handle_cancel_task(task_id)
-                elif self.path.endswith("/rerun"):
-                    self._handle_rerun_task(task_id)
-                elif self.path.endswith("/pause"):
-                    self._handle_pause_task(task_id)
-                elif self.path.endswith("/resume"):
-                    self._handle_resume_task(task_id)
-                else:
-                    self._handle_get_task(task_id)
+                action = segs[3] if len(segs) > 3 else ""
+                if action in _POST_ONLY_TASK_ACTIONS:
+                    # spec 里这些端点只有 post（openapi_spec.py `/tasks/{task_id}/<动作>`）
+                    return self._method_not_allowed("POST")
+                if action:
+                    # 其余未知动作段：不再回落到详情——`/tasks/<id>/approve` 曾经因此返回
+                    # 200 + 详情，调用方会当成"审批已放行"。
+                    return self._json({"error": "not found"}, 404)
+                self._handle_get_task(task_id)
             elif self.path == "/agents":
                 self._handle_list_agents()
             elif self.path.startswith("/api/agents/"):
@@ -895,7 +982,7 @@ class AdminHandler(BaseHTTPRequestHandler):
             elif self.path == "/api/openapi.json":
                 from .openapi_spec import generate_spec
                 self._json(generate_spec())
-            elif self.path == "/api/alerts":
+            elif self.path.split("?", 1)[0] == "/api/alerts":
                 if not self._require_admin():
                     return
                 self._handle_alerts()
@@ -936,6 +1023,12 @@ class AdminHandler(BaseHTTPRequestHandler):
                 return
             self._sync_shared_config()
 
+            # 跨源写操作闸（F3）：CORS 只管"浏览器能不能读响应"，写操作必须在服务端
+            # 自己拦一道——跨站简单请求会照常到达并生效，只是攻击者读不到响应。
+            # 置于鉴权之后 ⇒ 未通过鉴权仍先回 401，不改既有契约。
+            if not self._require_same_origin():
+                return
+
             # 读取请求体（已通过鉴权）；超限直接 413，不读入内存（S4 内存 DoS 防护）
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
@@ -956,32 +1049,38 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self._handle_create_run(wf_route[0], body)
                 return
             if self.path.startswith("/tasks/"):
-                task_id = self.path.split("/tasks/")[1].split("/")[0]
+                # 与 do_GET 同一口径剥 query 再切段：原先 `self.path.endswith("/cancel")`
+                # 在带 query 时失配（`POST /tasks/<id>/cancel?token=K` 会被判成"方法不允许"），
+                # 而 query token 是文档化的鉴权形式。
+                raw = self.path.split("?", 1)[0]
+                segs = raw.split("/")
+                task_id = segs[2] if len(segs) > 2 else ""
                 if not _validate_task_id(task_id):
                     return self._json({"error": "invalid task id"}, 400)
-                if self.path.endswith("/cancel"):
+                action = segs[3] if len(segs) > 3 else ""
+                if action == "cancel":
                     self._handle_cancel_task(task_id)
                     return
-                elif self.path.endswith("/rerun"):
+                elif action == "rerun":
                     self._handle_rerun_task(task_id)
                     return
-                elif self.path.endswith("/pause"):
+                elif action == "pause":
                     self._handle_pause_task(task_id)
                     return
-                elif self.path.endswith("/resume"):
+                elif action == "resume":
                     self._handle_resume_task(task_id)
                     return
-                elif self.path.endswith("/approve"):
+                elif action == "approve":
                     self._handle_approve_task(task_id, body)
                     return
-                elif self.path.endswith("/reject"):
+                elif action == "reject":
                     self._handle_reject_task(task_id, body)
                     return
             elif self.path == "/api/versions/rollback":
                 try:
                     payload = json.loads(body.decode("utf-8")) if body else {}
                 except (ValueError, UnicodeDecodeError):
-                    return self._json({"error": "请求体不是合法 JSON"}, 400)
+                    return self._json({"error": CANONICAL_INVALID_JSON}, 400)
                 file_path = payload.get("file", "")
                 version = payload.get("version")
                 if not file_path or not isinstance(version, int):
@@ -1057,6 +1156,10 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self._json({"error": "unauthorized"}, 401)
                 return
             self._sync_shared_config()
+            # 跨源写操作闸（F3）：DELETE 从浏览器来必经预检，但服务端仍自己拦一道
+            # （预检只保证"浏览器会先问"，不保证"非浏览器客户端守规矩"）。
+            if not self._require_same_origin():
+                return
             if self.path.startswith("/api/events/hooks/"):
                 hook_id = self.path.split("/api/events/hooks/")[1]
                 self._handle_unregister_hook(hook_id)
@@ -1552,14 +1655,15 @@ class AdminHandler(BaseHTTPRequestHandler):
           title (str, 可选) — 文档标题，默认同 query
           pipeline (str, 可选) — 流水线名，默认 docgen
           wait (bool, 可选) — 是否同步等待完成，默认 false
-          output (str, 可选) — 输出文件路径
+          output (str, 可选) — 输出路径只做**白名单校验，不参与落盘**（与 docs/api.md 同口径；
+                               把它接成真写文件是另一件事，见 `_launch_from_doc`）
         """
         if not self.orch:
             return self._json({"error": "orchestrator not set"}, 500)
         try:
             data = _fast_loads(body) if body else {}
         except Exception:
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
 
         query = str(data.get("query", "") or "").strip()
         typed_inputs = data.get("inputs")
@@ -1607,7 +1711,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         body JSON:
           inputs (obj, 必填) — 按该流水线 `pipeline.inputs` 声明校验的载荷
           wait (bool, 可选) — 同步等待完成，默认 false
-          output (str, 可选) — 输出文件路径（同 /api/tasks 的白名单校验）
+          output (str, 可选) — 同 /api/tasks：只做**白名单校验，不参与落盘**
 
         与 `/api/tasks` 的差别只在载荷形状：这里没有 `query` 语义，任何声明了 inputs
         的流水线都能用同一份契约提交；非法载荷 400 且错误带字段名（`fields`）。
@@ -1618,7 +1722,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             data = _fast_loads(body) if body else {}
         except Exception:
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         if not isinstance(data, dict):
             return self._json({"error": "body 必须是 JSON 对象"}, 400)
 
@@ -1772,7 +1876,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
         except (ValueError, UnicodeDecodeError):
-            return self._json({"error": "请求体不是合法 JSON"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         note = str(payload.get("note", "") or "") if isinstance(payload, dict) else ""
         ok, err = self.orch.approve(task_id, note=note, by=self._approval_actor())
         if not ok:
@@ -1791,7 +1895,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
         except (ValueError, UnicodeDecodeError):
-            return self._json({"error": "请求体不是合法 JSON"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         reason = str(payload.get("reason", "") or "") if isinstance(payload, dict) else ""
         ok, err = self.orch.reject(task_id, reason=reason, by=self._approval_actor())
         if not ok:
@@ -2190,7 +2294,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             data = _fast_loads(body) if body else {}
         except (json.JSONDecodeError, Exception):
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         key = data.get("key")
         value = data.get("value")
         if not key:
@@ -2478,7 +2582,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             data = _fast_loads(body) if body else {}
         except (json.JSONDecodeError, Exception):
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         event = data.get("event")
         url = data.get("url")
         if not event or not url:
