@@ -103,6 +103,18 @@ _MAX_BODY_BYTES = 10 * 1024 * 1024
 #      以为"已取消 / 已放行"而实际什么都没发生（静默假成功，比报错更难查）。
 _POST_ONLY_TASK_ACTIONS = frozenset({"cancel", "rerun", "pause", "resume", "approve", "reject"})
 
+#: 「请求体不是合法 JSON」的**唯一**写法（F4，2026-11-07）。
+#:
+#: 同一个条件此前有两种文案：`invalid JSON body`（4 处：/api/tasks、/api/workflows/{name}/runs、
+#: /api/config、/api/events/hooks）与 `请求体不是合法 JSON`（3 处：/api/versions/rollback、
+#: approve、reject）。后果很实在：前端两串都不匹配（只能原样透传 `error`），且**同一个用户
+#: 动作在不同端点看到不同话术**。收敛到这一条的理由不是"哪边多一个"（英文实际更多），而是：
+#: `openapi_spec.py` 已经把「请求体不是合法 JSON」写成 approve/reject 的 **400 文档化描述**
+#: ——spec 是权威契约，实现该向它对齐；且控制台/CLI/文档整体是中文口径。
+#:
+#: 收敛成一个常量而不是继续散写字面量：想再写第二种拼法必须显式改这里。
+CANONICAL_INVALID_JSON = "请求体不是合法 JSON"
+
 
 def mask_token_query(text: str) -> str:
     return _QS_TOKEN_RE.sub(r"\1***", text)
@@ -1068,7 +1080,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                 try:
                     payload = json.loads(body.decode("utf-8")) if body else {}
                 except (ValueError, UnicodeDecodeError):
-                    return self._json({"error": "请求体不是合法 JSON"}, 400)
+                    return self._json({"error": CANONICAL_INVALID_JSON}, 400)
                 file_path = payload.get("file", "")
                 version = payload.get("version")
                 if not file_path or not isinstance(version, int):
@@ -1643,14 +1655,15 @@ class AdminHandler(BaseHTTPRequestHandler):
           title (str, 可选) — 文档标题，默认同 query
           pipeline (str, 可选) — 流水线名，默认 docgen
           wait (bool, 可选) — 是否同步等待完成，默认 false
-          output (str, 可选) — 输出文件路径
+          output (str, 可选) — 输出路径只做**白名单校验，不参与落盘**（与 docs/api.md 同口径；
+                               把它接成真写文件是另一件事，见 `_launch_from_doc`）
         """
         if not self.orch:
             return self._json({"error": "orchestrator not set"}, 500)
         try:
             data = _fast_loads(body) if body else {}
         except Exception:
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
 
         query = str(data.get("query", "") or "").strip()
         typed_inputs = data.get("inputs")
@@ -1698,7 +1711,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         body JSON:
           inputs (obj, 必填) — 按该流水线 `pipeline.inputs` 声明校验的载荷
           wait (bool, 可选) — 同步等待完成，默认 false
-          output (str, 可选) — 输出文件路径（同 /api/tasks 的白名单校验）
+          output (str, 可选) — 同 /api/tasks：只做**白名单校验，不参与落盘**
 
         与 `/api/tasks` 的差别只在载荷形状：这里没有 `query` 语义，任何声明了 inputs
         的流水线都能用同一份契约提交；非法载荷 400 且错误带字段名（`fields`）。
@@ -1709,7 +1722,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             data = _fast_loads(body) if body else {}
         except Exception:
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         if not isinstance(data, dict):
             return self._json({"error": "body 必须是 JSON 对象"}, 400)
 
@@ -1863,7 +1876,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
         except (ValueError, UnicodeDecodeError):
-            return self._json({"error": "请求体不是合法 JSON"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         note = str(payload.get("note", "") or "") if isinstance(payload, dict) else ""
         ok, err = self.orch.approve(task_id, note=note, by=self._approval_actor())
         if not ok:
@@ -1882,7 +1895,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
         except (ValueError, UnicodeDecodeError):
-            return self._json({"error": "请求体不是合法 JSON"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         reason = str(payload.get("reason", "") or "") if isinstance(payload, dict) else ""
         ok, err = self.orch.reject(task_id, reason=reason, by=self._approval_actor())
         if not ok:
@@ -2281,7 +2294,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             data = _fast_loads(body) if body else {}
         except (json.JSONDecodeError, Exception):
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         key = data.get("key")
         value = data.get("value")
         if not key:
@@ -2569,7 +2582,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         try:
             data = _fast_loads(body) if body else {}
         except (json.JSONDecodeError, Exception):
-            return self._json({"error": "invalid JSON body"}, 400)
+            return self._json({"error": CANONICAL_INVALID_JSON}, 400)
         event = data.get("event")
         url = data.get("url")
         if not event or not url:
