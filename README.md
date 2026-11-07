@@ -1187,12 +1187,28 @@ poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算�
 SKIPPED 集合未变）；
 （2026-11-06 订正：上面两处提到的那条 xfail 已随 #106 修复转正——`resolve_pipeline_name`
 改调 `scheduler` 的**模块级** `installed_pipelines`，用例去掉 `xfail(strict=True)` 并收紧成
-三条断言（命中请求名 / 空请求落默认 / 不存在返回空名加可读错误）。收集数不变，
-`3688 passed` 自此是字面实测值，不再含 xfailed。）
-实际收集 **3712** 条（Windows 本机）/ **3720** 条（Linux CI，多 8 条为 POSIX-only 用例），
+三条断言（命中请求名 / 空请求落默认 / 不存在返回空名加可读错误）。选中数不变，
+`3688 passed` 自此是字面实测值，不再含 xfailed——本机全量已复跑证实：
+3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
+口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。）
+实际收集（选中 / 收集）：**3712 / 3718**（Windows 本机）/ **3711 / 3717**（Linux CI，四条腿一致），
+（2026-11-07 订正：原文写「Linux **3720**，多 8 条为 POSIX-only 用例」，**实测不成立**。
+CI run `42261174587`（pytest 8.3.4，Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，四条腿都挂真 PG）
+逐腿读到 `collected 3717 items / 6 deselected / 3711 selected` 与 3700 passed、11 skipped；
+本机同 SHA `--co -q` 读到 `3712/3718`。Linux 比 Windows **少 1 条**，不是多 8 条。
+差的那条已归因到用例：`tests/test_html_backend.py:94` 的
+`@pytest.mark.parametrize("backend", _available_kernels() or ["modest"])` 按**环境里真能导入的
+selectolax 内核**动态参数化（`_available_kernels()` 在同文件 42–49 行，走生产同一条 `_load` 探测）：
+本机 `modest` + `lexbor` 两个 ⇒ 2 条，CI 只有 `lexbor` ⇒ 1 条。逐文件对账：两侧各 **165** 个测试文件，
+**164** 个计数逐一相等，只有 `test_html_backend.py` 差（本机 10 / CI 9）。
+全仓唯一按平台条件的是 `tests/test_requirements_analyzer.py:149` 的
+`skipif(sys.platform != "linux")`，它影响 **skipped**、不影响收集数。）
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
-护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
+护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加 `LINUX_COLLECT_DELTA = 8`
+的**预算余量**（`tests/test_doc_consistency.py:49`）——那是 2026-10-28 留下的历史上界，
+**不是今天实测的平台差**；今天 Linux 收集比 Windows 少，这 8 条余量用不到，
+留着只为容忍上面那类「环境依赖型参数化」的波动；
 口径：`Python 3.14.3`、串行无 `-n`、本次跑测期间没有别的 pytest 在本仓跑
 （同机另有别的 python 进程，命令行读不到、没归因）、`LOOM_TEST_PG_URL` 未设；
 **本批 +36 条**（2026-10-28，A6 活性 + 交付追溯面 + 控制台账本）：`tests/test_gc_liveness.py` 18 条

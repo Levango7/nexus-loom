@@ -78,7 +78,9 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   后该用例必红（`AttributeError: type object 'Scheduler' has no attribute 'installed_pipelines'`），
   字节级还原后两文件 sha256 与基线一致、复跑转绿——绿/红/还原三点齐。
 - 连带影响 README 计数：`3688 passed` 此前含 1 条 xfailed（3687 passed + 1 xfailed），
-  本批转正后是字面实测值；收集数不变（3712 Windows / 3720 Linux CI）。
+  本批转正后是字面实测值——本机全量复跑实证 3688 passed、24 skipped、6 deselected、
+  0 xfailed（Windows / Python 3.14.3 / 串行 / 未设 PG，1308.73s）；CI 四条腿同为
+  3700 passed、11 skipped、**0 xfailed**（真 PG）。选中数不变（Windows 3712 / Linux CI 3711）。
 
 ### Tests（2026-11-05，浏览器门从"人肉才算数"接进 CI，并给这条接线本身加判据）
 
@@ -97,9 +99,11 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   红在 `#last-updated` 的"部分数据不可用"），还原 sha 一致——证明这门不是摆设。
 - 顺带订正 README 计数链：`llm_router` 的 `+25 条 …后为 3397/收集 3421` 一段此前被追加在链尾
   （读起来像"3530 之后少了 133 条"），按其算术挪回 `3372` 与 `+35` 之间；**只搬位置，没改任何数字**。
-  本批 +1 条判据；与 #103（+157）合流后为 3688 passed / 收集 3712（Windows）/ 3720（Linux CI）。
+  本批 +1 条判据；与 #103（+157）合流后为 3688 passed / 选中 3712（Windows）/ 3711（Linux CI）。
   （2026-11-06 订正：原文写的 3531 / 3555 / 3563 是照当初的基数 3530 推的，#103 把基数
   推到 3687 后没回填——本行按合流后的实测改。）
+  （2026-11-07 再订正：Linux 那个数原写 3720，实测是 3711 选中 / 3717 收集，比 Windows **少 1**；
+  归因与逐文件对账见 README 测试一节的同日订正。）
 
 ### Tests（2026-11-02，节点检查器投影态：前端换文案这件事终于有判据）
 
