@@ -59,7 +59,49 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
-## [3.17.0] - 2026-11-06
+## [3.17.0] - 2026-11-07
+
+### Fixed（2026-11-07，批次一 F1–F5：五条后端接口缺陷；PR #107 #108 #109 #110，代记）
+
+> 这批由 zcode 按协调板 §二十三 五线审计台账修复，**没动 CHANGELOG**，而发版说明是
+> `release.yml` 从本文件 awk 抽的——不补就等于这五条用户可见修复在 Release notes 里不存在。
+> **功能与判据归原作者**，这里只补索引（我按合并后的树复核了计数与锚点，细节以各 PR 为准）。
+
+- **F1｜`GET /api/alerts` 带任何 query 就 404**（#107）：`do_GET` 里这条写的是
+  `self.path == "/api/alerts"`，而 spec 给它声明了 `level/category/limit` 三个 query 参数
+  ⇒ 按规范带参数的客户端落进通用 404，`_handle_alerts` 的过滤器**整体不可达**。
+  同批姊妹路由（deliveries / locks / versions / schedules / config.audit / versions.stats /
+  versions.diff）早就写成 `split("?", 1)[0] ==`，只有这条漏了；改为剥 query 再匹配。
+  新增 `tests/test_admin_api_query_routing.py`（11 条）：行为层「spec 声明了 query 的 GET
+  端点带参必须路由到某个 handler」+ 结构层「不得再对这些路径做精确相等比较（AST 抓）」
+  + 非空转断言（覆盖集从 `generate_spec()` 反推，不写死路径表）。
+  **旧测试为什么没逮住**：`test_admin_api.py` / `test_admin_api_ext.py` 直接调
+  `_handle_alerts()`，绕开了分发层——handler 对、路由错，缺陷从两层测试的缝里滑过去。
+- **F2｜`GET /tasks/<id>/{cancel,rerun,pause,resume}` 会真的执行状态变更**（#108）：
+  spec 只声明 `post`，实现却有第二扇未声明的门；`/rerun` 会再跑一遍流水线（真花钱）。
+  更隐蔽的是 `/approve`、`/reject` 的 GET 回落到详情分支、返回 **200 + 详情**——
+  误用 GET 的调用方会当成「已放行」，实际什么都没发生（静默假成功，比报错更难查）。
+  GET 改为 **405 + `Allow: POST`**；`/dlq/{id}/replay` 经证据核对属**文档化设计意图**
+  （docstring 与 `docs/api.md` 都对用户写明「GET 同样要求 `X-Confirm`」），行为不动，
+  改为把 `get` 补进 spec，让 spec / 实现 / docs 三处同口径。新增
+  `tests/test_admin_api_method_gate.py`。
+- **F3｜跨站状态变更请求零拦截**（#109）：`_apply_cors_headers` 只回 ACAO 头、从不拒绝——
+  CORS 管的是「浏览器读不读得到响应」，与「请求会不会被执行」无关。默认部署是本机信任模式
+  （无需任何凭据），跨站页面用简单请求即可起跑（= 花费）、改状态，甚至
+  `POST /api/events/hooks` **把数据外发到攻击者 URL**。新增 `_require_same_origin()`
+  （判据复用既有 CORS 白名单：显式配置 / 与 Host 同源 / 回环且端口与本服务一致）：
+  浏览器请求必带 Origin ⇒ 不在白名单则 403；**无 Origin 头放行**（SDK / curl 不受影响），
+  `/api/webhooks` 入站端点按设计豁免。新增 `tests/test_admin_api_origin_gate.py`。
+- **F4｜同一个「请求体不是合法 JSON」有两种文案**（#110）：`invalid JSON body` 4 处 /
+  `请求体不是合法 JSON` 3 处，前端两串都不匹配，同一动作在不同端点看到不同话术。
+  收敛为模块常量 `CANONICAL_INVALID_JSON`，7 个调用点全走常量——结构性只有一种写法，
+  而不是「约定大家别写错」。选中文的真实理由不是「看哪边多」：`openapi_spec.py` 已把中文
+  那句写成 approve/reject 的 400 文档化描述，spec 是权威契约。
+- **F5｜`output` 字段的内部 docstring 与用户文档矛盾**（#110）：内部 docstring 写
+  「输出文件路径」，而 `docs/api.md:188` 与 `_launch_from_doc` 对用户写明「只做白名单校验，
+  不参与落盘」。**行为本身是设计意图**，说谎的是内部文档——只改文案，不改行为。
+- 计数：这批 **+77 条判据**（3688 → 3765 passed / 24 skipped / 选中 3789），
+  本机全量复跑与 `--co -q` 均已按合流后的树重测。
 
 ### Fixed（2026-11-06，`resolve_pipeline_name()` 一调就 AttributeError；PR #106，代记）
 
