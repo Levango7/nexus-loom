@@ -1127,7 +1127,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3732 个测试本机全绿**（`3732 passed, 24 skipped, 6 deselected`，2026-11-07 按 +33 条
+**3757 个测试本机全绿**（`3757 passed, 24 skipped, 6 deselected`，2026-11-07 按 +25 条
+（F3 跨源写操作闸：`POST`/`DELETE` 带非白名单 `Origin` ⇒ 403，且被拒请求**不读请求体、
+不碰 orch 写路径**；25 条判据含台账点名的 14 条写面逐一扫 + 真 HTTP 反面对照（无 Origin
+必须放行）+ webhook 入站豁免 + 401 优先于 403 的顺序钉扎）自 3732 同 skipped 集推为；同日 2026-11-07 按 +33 条
 （F2 方法契约：`/tasks/<id>/<动作>` 的 GET 原会静默执行状态变更（`/rerun` 真花钱），
 `approve`/`reject` 更会回落详情路由给出 200 的假成功，现统一为 405 + `Allow: POST`；
 新增 32 条从 spec 反推的方法门 + 1 条旧断言反向订正）自 3699 同 skipped 集推为；同日 2026-11-07 按 +11 条
@@ -1190,7 +1193,7 @@ poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算�
 +1 条（浏览器门接进 CI 的接线判据：ci.yml 必须真有一步在跑 `check_dashboard_browser.py`
 并按 token 交代浏览器来源，否则前两层守卫只在有人手动跑时才生效）后为 3688 / 收集 3712，
 SKIPPED 集合未变）；
-实际收集 **3756** 条（Windows 本机）/ **3764** 条（Linux CI，多 8 条为 POSIX-only 用例），
+实际收集 **3781** 条（Windows 本机）/ **3789** 条（Linux CI，多 8 条为 POSIX-only 用例），
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；

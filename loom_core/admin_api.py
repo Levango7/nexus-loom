@@ -31,6 +31,13 @@ Admin API v1 - 轻量级 REST API（零外部依赖）
   - 客户端需在 Header 携带 `Authorization: Bearer <key>`
   - /health 和静态资源免鉴权
 
+跨源写操作：
+  - `POST` / `DELETE` 若带 `Origin` 且不在白名单（`ADMIN_CORS_ORIGINS` 显式配置 /
+    与 `Host` 头同源 / 回环地址且端口与本服务一致）⇒ 403
+    `{"error": "cross-origin request rejected"}`。不带 `Origin` 的客户端
+    （SDK / curl / 脚本）不受影响；`/api/webhooks` 入站端点豁免。
+    背景：CORS 只拦"浏览器读响应"，不拦请求**执行**——跨站简单请求会照常到达并生效。
+
 危险操作二次确认：
   - POST /api/config、/api/cache/clear、/api/versions/rollback、/dlq/<id>/replay
     除鉴权外必须携带请求头 `X-Confirm: yes`，缺失返回
@@ -501,6 +508,44 @@ class AdminHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _require_same_origin(self) -> bool:
+        """跨源写操作闸：Origin 存在且不在白名单 ⇒ 403（无 Origin 头 ⇒ 放行）。
+
+        为什么 CORS 头不够：CORS 只管"浏览器能不能**读**响应"，**不管请求会不会被执行**。
+        一个跨站页面用 `<form>` / `<img>` 或 `fetch(..., {mode:'no-cors'})` 就能发出
+        **简单请求**，请求照常到达、照常生效（默认部署是本机信任模式，连凭据都不需要），
+        攻击者只是读不到响应而已。所以写操作必须在**服务端**按 Origin 自己拦一道，
+        而不是指望浏览器。
+
+        判据复用 CORS 白名单 `_allowed_origin`（`ADMIN_CORS_ORIGINS` 显式配置 / 与
+        `Host` 头同源 / 回环地址且端口与本服务一致），因此：
+
+        - **不误伤 dashboard**：控制台由本服务同端口提供 ⇒ Origin = `http://<host>:<port>`
+          命中回环同端口或 Host 同源规则；
+        - **不误伤 SDK / curl / 脚本**：浏览器发 POST 必带 `Origin`，非浏览器客户端
+          默认不带 ⇒ 无 Origin 头直接放行；
+        - **豁免入站 webhook**：`/api/webhooks` 在鉴权门之前就 return 了（外部服务直连，
+          本就不该受浏览器同源规则约束）。
+
+        本闸置于 `_check_auth()` **之后**：未通过鉴权仍先回 401（不改既有鉴权契约，
+        也不泄露"这个源有没有被拒绝"）。
+        """
+        origin = (self.headers.get("Origin") or "").strip()
+        if not origin:
+            return True
+        if self._allowed_origin(origin):
+            return True
+        with contextlib.suppress(Exception):
+            from .observability import get_logger
+            # 单条消息、自行格式化：`StructuredLogger.warning(msg, **kw)` 只收**一个**位置参数，
+            # 写成 printf 风格的多位置参数会在运行时 TypeError —— 而它被上面的
+            # `contextlib.suppress` 静默吞掉，本机测试全绿也发现不了。CI 的 mypy 门
+            # （`call-arg`）正是逮这个的，本地验证配方已把 mypy 补进去。
+            get_logger().warning(
+                f"[AdminAPI] 拒绝跨源写请求: {self.path} Origin={origin}")
+        self._json({"error": "cross-origin request rejected"}, 403)
+        return False
+
     def _method_not_allowed(self, allow: str = "POST"):
         """405 + `Allow`：把"路径对、动词错"讲明白，而不是让它看起来像路径不存在。
 
@@ -966,6 +1011,12 @@ class AdminHandler(BaseHTTPRequestHandler):
                 return
             self._sync_shared_config()
 
+            # 跨源写操作闸（F3）：CORS 只管"浏览器能不能读响应"，写操作必须在服务端
+            # 自己拦一道——跨站简单请求会照常到达并生效，只是攻击者读不到响应。
+            # 置于鉴权之后 ⇒ 未通过鉴权仍先回 401，不改既有契约。
+            if not self._require_same_origin():
+                return
+
             # 读取请求体（已通过鉴权）；超限直接 413，不读入内存（S4 内存 DoS 防护）
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
@@ -1093,6 +1144,10 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self._json({"error": "unauthorized"}, 401)
                 return
             self._sync_shared_config()
+            # 跨源写操作闸（F3）：DELETE 从浏览器来必经预检，但服务端仍自己拦一道
+            # （预检只保证"浏览器会先问"，不保证"非浏览器客户端守规矩"）。
+            if not self._require_same_origin():
+                return
             if self.path.startswith("/api/events/hooks/"):
                 hook_id = self.path.split("/api/events/hooks/")[1]
                 self._handle_unregister_hook(hook_id)
