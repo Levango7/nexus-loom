@@ -549,8 +549,12 @@ class AdminHandler(BaseHTTPRequestHandler):
             return True
         with contextlib.suppress(Exception):
             from .observability import get_logger
+            # 单条消息、自行格式化：`StructuredLogger.warning(msg, **kw)` 只收**一个**位置参数，
+            # 写成 printf 风格的多位置参数会在运行时 TypeError —— 而它被上面的
+            # `contextlib.suppress` 静默吞掉，本机测试全绿也发现不了。CI 的 mypy 门
+            # （`call-arg`）正是逮这个的，本地验证配方已把 mypy 补进去。
             get_logger().warning(
-                "[AdminAPI] 拒绝跨源写请求: %s Origin=%s", self.path, origin)
+                f"[AdminAPI] 拒绝跨源写请求: {self.path} Origin={origin}")
         self._json({"error": "cross-origin request rejected"}, 403)
         return False
 
