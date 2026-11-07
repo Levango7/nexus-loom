@@ -61,6 +61,29 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [3.17.0] - 2026-11-07
 
+### Docs（2026-11-07，第一公里：快速开始改两段式 + CLI 动词表补齐；PR #111，代记）
+
+> 由 zcode 按协调板 §二十三 L5 线修复，未动 CHANGELOG。功能与判据归原作者，这里只补索引。
+
+- **L5-01｜新机按 README 走不出任何产出**：原「3 步快速体验」第一步就是 `pip install` + 联网
+  检索（默认流水线 docgen = researcher + writer），而仓库里唯一的**离线闭环** `loom demo`
+  在 README 里零提及（`grep -c demo README.md` ⇒ 0）——装完依赖什么都看不到，生产力卡在
+  第一公里。改为两段式：「第一步：离线跑通（无网络、无 Key、十几秒）」用 `python run.py demo`
+  （沙盒 `loom-demo-<时间戳>/deliverables/` 下 md/html/docx + 质量门七维给分 + 交付账本落
+  一行），「第二步：联网 + LLM 全路径」保留原 docgen 三步并明确标注前置；「网络 / Key」从
+  通用前置收窄成第二步的前置。
+- **L5-02｜CLI 动词表漏两行**：README 的「CLI 动词与参数」表只有 6 行，漏了 `loom demo` 与
+  `loom pack new`（`run.py` 的 `VERBS` / `_PACK_ACTIONS` 里都有，`--help` 也印）。已补齐。
+- 新增 `tests/test_readme_quickstart.py`（5 条），护栏从 `run.py` **反推**、不写死动词表：
+  ① `VERBS` 里每个动词都必须在「CLI 动词与参数」**那一节**出现；② `_PACK_ACTIONS` 的每个
+  子动作同理（`pack new` 就是这样漏掉的）；③ 离线必须排在联网之前（`run.py demo` 的位置 <
+  `-o output/my_doc.md`）——钉的是**顺序**，不是「提过一句」；④ demo 流水线节点集合钉住
+  `{transform, quality_gate, checker, layout, safe_writer, renderer}`，让「不检索、不抓取、
+  不调 LLM」有据可依；⑤ `demo` 端到端离线真跑。
+  判据刻意落在**那一节**而非全 README 子串查找：变异实测过——只删表格行、散文里还留着
+  `loom demo` 时，全 README 查找**照样绿**（那正是 L5-02 的缺陷形态），收窄到那一节后同一次
+  变异即红。
+
 ### Fixed（2026-11-07，批次一 F1–F5：五条后端接口缺陷；PR #107 #108 #109 #110，代记）
 
 > 这批由 zcode 按协调板 §二十三 五线审计台账修复，**没动 CHANGELOG**，而发版说明是
@@ -100,8 +123,10 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 - **F5｜`output` 字段的内部 docstring 与用户文档矛盾**（#110）：内部 docstring 写
   「输出文件路径」，而 `docs/api.md:188` 与 `_launch_from_doc` 对用户写明「只做白名单校验，
   不参与落盘」。**行为本身是设计意图**，说谎的是内部文档——只改文案，不改行为。
-- 计数：这批 **+77 条判据**（3688 → 3765 passed / 24 skipped / 选中 3789），
-  本机全量复跑与 `--co -q` 均已按合流后的树重测。
+- 计数：这批 **+77 条判据**（3688 → 3765 passed / 24 skipped）；合流后先由本机 `--co -q`
+  实测选中 3789，再由合流后的 CI 四条腿跑完整套——3.14 腿实测 3777 passed、11 skipped、
+  选中 3788（真 PG，3777 + 11 = 3788 自洽）。Windows 与 Linux 的「−1」见 README 测试一节
+  的归因（`test_html_backend.py` 按环境可导入的 selectolax 内核动态参数化）。
 
 ### Fixed（2026-11-06，`resolve_pipeline_name()` 一调就 AttributeError；PR #106，代记）
 
