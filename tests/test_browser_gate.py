@@ -45,6 +45,7 @@ REQUIRED_PASS_TOPICS = {
     "cancelling rejection": "取消驳回不发决策",
     "explicit confirmation": "确认之后才发驳回",
     "saving credentials": "凭证保存后重载流水线目录",
+    "palettes meet WCAG AA": "浅/深主题对比度真浏览器复核（L2-01/L2-02）",
 }
 
 
