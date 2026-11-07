@@ -1220,10 +1220,36 @@ poll_overlay 三分支 / 点键写入遇标量中间层 / 锁 stat 竞态不算�
 +1 条（浏览器门接进 CI 的接线判据：ci.yml 必须真有一步在跑 `check_dashboard_browser.py`
 并按 token 交代浏览器来源，否则前两层守卫只在有人手动跑时才生效）后为 3688 / 收集 3712，
 SKIPPED 集合未变）；
-实际收集 **3794** 条（Windows 本机）/ **3802** 条（Linux CI，多 8 条为 POSIX-only 用例），
+（2026-11-06 订正：上面两处提到的那条 xfail 已随 #106 修复转正——`resolve_pipeline_name`
+改调 `scheduler` 的**模块级** `installed_pipelines`，用例去掉 `xfail(strict=True)` 并收紧成
+三条断言（命中请求名 / 空请求落默认 / 不存在返回空名加可读错误）。选中数不变，
+`3688 passed` 自此是字面实测值，不再含 xfailed——合 #106 后本机全量复跑证实：
+3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
+口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
+再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
+实际收集（选中 / 收集）：**3794 / 3800**（Windows 本机，合 main 后 `--co -q` 实测）/
+**3793 / 3799**（Linux CI = Windows − 1，机制见下；已有两次独立印证），
+（2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
+两次独立实测都是 Linux 比 Windows **少 1 条**：
+① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，
+pytest 8.3.4，都挂真 PG）逐腿读到 `collected 3717 items / 6 deselected / 3711 selected`
+与 3700 passed、11 skipped，本机同 SHA `--co -q` 读 3712/3718；
+② 在 `8c9bc52`（批次一合流后）上 CI 的 3.14 腿读到 `collected 3794 items / 6 deselected /
+3788 selected`、3777 passed + 11 skipped，本机同内容树 `--co -q` 读 3789/3795。
+差的那一条已归因：`tests/test_html_backend.py:94` 的
+`@pytest.mark.parametrize("backend", _available_kernels() or ["modest"])` 按**环境里真能导入的
+selectolax 内核**动态参数化（`_available_kernels()` 在同文件 42–49 行，走生产同一条 `_load` 探测）：
+本机 `modest` + `lexbor` 两个 ⇒ 2 条，CI 只有 `lexbor` ⇒ 1 条；第一次对账时 165 个测试文件里
+164 个计数逐一相等，只差这一个。此后合入的批次一与 #111 都没碰它那条参数化（新测试文件里
+也没有动态参数化），故仍按 −1 记。
+全仓唯一按平台条件的是 `tests/test_requirements_analyzer.py:149` 的
+`skipif(sys.platform != "linux")`，它影响 **skipped**、不影响收集数。）
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
 未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
-护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加实测的 8 条平台差；
+护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加 `LINUX_COLLECT_DELTA = 8`
+的**预算余量**（`tests/test_doc_consistency.py:49`）——那是 2026-10-28 留下的历史上界，
+**不是今天实测的平台差**；今天 Linux 收集比 Windows 少，这 8 条余量用不到，
+留着只为容忍上面那类「环境依赖型参数化」的波动；
 口径：`Python 3.14.3`、串行无 `-n`、本次跑测期间没有别的 pytest 在本仓跑
 （同机另有别的 python 进程，命令行读不到、没归因）、`LOOM_TEST_PG_URL` 未设；
 **本批 +36 条**（2026-10-28，A6 活性 + 交付追溯面 + 控制台账本）：`tests/test_gc_liveness.py` 18 条

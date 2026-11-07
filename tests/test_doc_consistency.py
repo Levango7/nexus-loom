@@ -46,6 +46,11 @@ def _readme_counts() -> tuple[int, int] | None:
 #: 2026-10-29 头（含 #78）上绝对数变了、这个差额没变：Windows 收集 3209 / skipped 24 /
 #: passed 3185 ⇒ Linux 预期组合 3217，预算 24 + 8 = 32 恰好等于 3217 − 3185。这个"恰好"
 #: 是有意的：Linux 侧能容忍的只有环境门 skip 与平台差，再多一条就该有人来解释。
+#: 2026-11-07 复核订正：这个 8 如今只是**预算余量**，不是实测平台差。同一 SHA 在 CI 四条腿
+#: 实测 Linux 收集 3717 / 选中 3711，比 Windows（3718 / 3712）**少 1**；差的那条已归因到
+#: tests/test_html_backend.py:94 —— 它按环境里真能导入的 selectolax 内核动态参数化
+#: （本机 modest + lexbor 两个、CI 只有 lexbor 一个）。常量不动：放宽方向无害，收紧反而会让
+#: 这类环境波动假红；但别再把它读成"Linux 比 Windows 多收集 8 条 POSIX-only 用例"。
 LINUX_COLLECT_DELTA = 8
 
 
@@ -76,7 +81,8 @@ def test_readme_test_count_matches_collection():
 
     # skipif 的用例被收集但不执行，所以 declared 允许比 collected 小的部分只能
     # 是这些 skip；上界 = README 自报的 skipped 数（Windows 侧精确），Linux 上再
-    # 加上实测的"多收集 8 条"。不写死一个"宽到不会红"的常量：环境门或平台差变了，
+    # 加上 LINUX_COLLECT_DELTA 的预算余量（8，见常量处 2026-11-07 的订正：今天实测是
+    # Linux 少 1 条，不是多 8 条）。不写死一个"宽到不会红"的常量：环境门或平台差变了，
     # 这里就该有人来解释一句，而不是悄悄放进一个更大的数里。
     import sys as _sys
 

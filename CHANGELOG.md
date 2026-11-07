@@ -59,6 +59,96 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
+## [3.17.0] - 2026-11-07
+
+### Docs（2026-11-07，第一公里：快速开始改两段式 + CLI 动词表补齐；PR #111，代记）
+
+> 由 zcode 按协调板 §二十三 L5 线修复，未动 CHANGELOG。功能与判据归原作者，这里只补索引。
+
+- **L5-01｜新机按 README 走不出任何产出**：原「3 步快速体验」第一步就是 `pip install` + 联网
+  检索（默认流水线 docgen = researcher + writer），而仓库里唯一的**离线闭环** `loom demo`
+  在 README 里零提及（`grep -c demo README.md` ⇒ 0）——装完依赖什么都看不到，生产力卡在
+  第一公里。改为两段式：「第一步：离线跑通（无网络、无 Key、十几秒）」用 `python run.py demo`
+  （沙盒 `loom-demo-<时间戳>/deliverables/` 下 md/html/docx + 质量门七维给分 + 交付账本落
+  一行），「第二步：联网 + LLM 全路径」保留原 docgen 三步并明确标注前置；「网络 / Key」从
+  通用前置收窄成第二步的前置。
+- **L5-02｜CLI 动词表漏两行**：README 的「CLI 动词与参数」表只有 6 行，漏了 `loom demo` 与
+  `loom pack new`（`run.py` 的 `VERBS` / `_PACK_ACTIONS` 里都有，`--help` 也印）。已补齐。
+- 新增 `tests/test_readme_quickstart.py`（5 条），护栏从 `run.py` **反推**、不写死动词表：
+  ① `VERBS` 里每个动词都必须在「CLI 动词与参数」**那一节**出现；② `_PACK_ACTIONS` 的每个
+  子动作同理（`pack new` 就是这样漏掉的）；③ 离线必须排在联网之前（`run.py demo` 的位置 <
+  `-o output/my_doc.md`）——钉的是**顺序**，不是「提过一句」；④ demo 流水线节点集合钉住
+  `{transform, quality_gate, checker, layout, safe_writer, renderer}`，让「不检索、不抓取、
+  不调 LLM」有据可依；⑤ `demo` 端到端离线真跑。
+  判据刻意落在**那一节**而非全 README 子串查找：变异实测过——只删表格行、散文里还留着
+  `loom demo` 时，全 README 查找**照样绿**（那正是 L5-02 的缺陷形态），收窄到那一节后同一次
+  变异即红。
+
+### Fixed（2026-11-07，批次一 F1–F5：五条后端接口缺陷；PR #107 #108 #109 #110，代记）
+
+> 这批由 zcode 按协调板 §二十三 五线审计台账修复，**没动 CHANGELOG**，而发版说明是
+> `release.yml` 从本文件 awk 抽的——不补就等于这五条用户可见修复在 Release notes 里不存在。
+> **功能与判据归原作者**，这里只补索引（我按合并后的树复核了计数与锚点，细节以各 PR 为准）。
+
+- **F1｜`GET /api/alerts` 带任何 query 就 404**（#107）：`do_GET` 里这条写的是
+  `self.path == "/api/alerts"`，而 spec 给它声明了 `level/category/limit` 三个 query 参数
+  ⇒ 按规范带参数的客户端落进通用 404，`_handle_alerts` 的过滤器**整体不可达**。
+  同批姊妹路由（deliveries / locks / versions / schedules / config.audit / versions.stats /
+  versions.diff）早就写成 `split("?", 1)[0] ==`，只有这条漏了；改为剥 query 再匹配。
+  新增 `tests/test_admin_api_query_routing.py`（11 条）：行为层「spec 声明了 query 的 GET
+  端点带参必须路由到某个 handler」+ 结构层「不得再对这些路径做精确相等比较（AST 抓）」
+  + 非空转断言（覆盖集从 `generate_spec()` 反推，不写死路径表）。
+  **旧测试为什么没逮住**：`test_admin_api.py` / `test_admin_api_ext.py` 直接调
+  `_handle_alerts()`，绕开了分发层——handler 对、路由错，缺陷从两层测试的缝里滑过去。
+- **F2｜`GET /tasks/<id>/{cancel,rerun,pause,resume}` 会真的执行状态变更**（#108）：
+  spec 只声明 `post`，实现却有第二扇未声明的门；`/rerun` 会再跑一遍流水线（真花钱）。
+  更隐蔽的是 `/approve`、`/reject` 的 GET 回落到详情分支、返回 **200 + 详情**——
+  误用 GET 的调用方会当成「已放行」，实际什么都没发生（静默假成功，比报错更难查）。
+  GET 改为 **405 + `Allow: POST`**；`/dlq/{id}/replay` 经证据核对属**文档化设计意图**
+  （docstring 与 `docs/api.md` 都对用户写明「GET 同样要求 `X-Confirm`」），行为不动，
+  改为把 `get` 补进 spec，让 spec / 实现 / docs 三处同口径。新增
+  `tests/test_admin_api_method_gate.py`。
+- **F3｜跨站状态变更请求零拦截**（#109）：`_apply_cors_headers` 只回 ACAO 头、从不拒绝——
+  CORS 管的是「浏览器读不读得到响应」，与「请求会不会被执行」无关。默认部署是本机信任模式
+  （无需任何凭据），跨站页面用简单请求即可起跑（= 花费）、改状态，甚至
+  `POST /api/events/hooks` **把数据外发到攻击者 URL**。新增 `_require_same_origin()`
+  （判据复用既有 CORS 白名单：显式配置 / 与 Host 同源 / 回环且端口与本服务一致）：
+  浏览器请求必带 Origin ⇒ 不在白名单则 403；**无 Origin 头放行**（SDK / curl 不受影响），
+  `/api/webhooks` 入站端点按设计豁免。新增 `tests/test_admin_api_origin_gate.py`。
+- **F4｜同一个「请求体不是合法 JSON」有两种文案**（#110）：`invalid JSON body` 4 处 /
+  `请求体不是合法 JSON` 3 处，前端两串都不匹配，同一动作在不同端点看到不同话术。
+  收敛为模块常量 `CANONICAL_INVALID_JSON`，7 个调用点全走常量——结构性只有一种写法，
+  而不是「约定大家别写错」。选中文的真实理由不是「看哪边多」：`openapi_spec.py` 已把中文
+  那句写成 approve/reject 的 400 文档化描述，spec 是权威契约。
+- **F5｜`output` 字段的内部 docstring 与用户文档矛盾**（#110）：内部 docstring 写
+  「输出文件路径」，而 `docs/api.md:188` 与 `_launch_from_doc` 对用户写明「只做白名单校验，
+  不参与落盘」。**行为本身是设计意图**，说谎的是内部文档——只改文案，不改行为。
+- 计数：这批 **+77 条判据**（3688 → 3765 passed / 24 skipped）；合流后先由本机 `--co -q`
+  实测选中 3789，再由合流后的 CI 四条腿跑完整套——3.14 腿实测 3777 passed、11 skipped、
+  选中 3788（真 PG，3777 + 11 = 3788 自洽）。Windows 与 Linux 的「−1」见 README 测试一节
+  的归因（`test_html_backend.py` 按环境可导入的 selectolax 内核动态参数化）。
+
+### Fixed（2026-11-06，`resolve_pipeline_name()` 一调就 AttributeError；PR #106，代记）
+
+> 这条由 qoder 代记：#106 改的是 `loom_core/pipeline.py` 与 `tests/test_pipeline_coverage.py`，
+> 没动 CHANGELOG，而发版说明是 `release.yml` 从本文件 awk 抽的——不补就等于这一批修复
+> 在 Release notes 里不存在。**功能与判据归 #106 的作者**，这里只补索引与独立复验。
+
+- `PipelineOrchestrator.resolve_pipeline_name()` 原先调 `Scheduler.installed_pipelines()`，
+  但 `installed_pipelines` 是 `loom_core/scheduler.py` 的**模块级**函数、类上没有同名方法
+  ⇒ 该方法任何调用都必抛 `AttributeError`。生产调用方（admin_api / mcp_server）走的是模块级
+  `resolve_pipeline_name(...)` + `_scheduler_mod.installed_pipelines()`，所以此前没有实际影响，
+  属潜伏缺陷（板上 C-23）。现在该方法对齐到同一条口径。
+- 钉住该缺陷的 `xfail(strict=True)` 去掉，断言从「结果在二选一里」收紧成三条：命中请求名 /
+  空请求落到 `config.default_pipeline` / 不存在时返回空名 + 可读错误（不猜）。
+- **独立复验**（qoder，Windows / 本机 Python）：把产品代码改回 `Scheduler.installed_pipelines()`
+  后该用例必红（`AttributeError: type object 'Scheduler' has no attribute 'installed_pipelines'`），
+  字节级还原后两文件 sha256 与基线一致、复跑转绿——绿/红/还原三点齐。
+- 连带影响 README 计数：`3688 passed` 此前含 1 条 xfailed（3687 passed + 1 xfailed），
+  本批转正后是字面实测值——本机全量复跑实证 3688 passed、24 skipped、6 deselected、
+  0 xfailed（Windows / Python 3.14.3 / 串行 / 未设 PG，1308.73s）；CI 四条腿同为
+  3700 passed、11 skipped、**0 xfailed**（真 PG）。选中数不变（Windows 3712 / Linux CI 3711）。
+
 ### Tests（2026-11-05，浏览器门从"人肉才算数"接进 CI，并给这条接线本身加判据）
 
 `tests/check_dashboard_browser.py` 给的是"渲染真的对"的证据，但它此前只在本地跑：
@@ -76,7 +166,11 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   红在 `#last-updated` 的"部分数据不可用"），还原 sha 一致——证明这门不是摆设。
 - 顺带订正 README 计数链：`llm_router` 的 `+25 条 …后为 3397/收集 3421` 一段此前被追加在链尾
   （读起来像"3530 之后少了 133 条"），按其算术挪回 `3372` 与 `+35` 之间；**只搬位置，没改任何数字**。
-  本批 +1 条判据 ⇒ 3531 passed / 收集 3555（Windows）/ 3563（Linux CI）。
+  本批 +1 条判据；与 #103（+157）合流后为 3688 passed / 选中 3712（Windows）/ 3711（Linux CI）。
+  （2026-11-06 订正：原文写的 3531 / 3555 / 3563 是照当初的基数 3530 推的，#103 把基数
+  推到 3687 后没回填——本行按合流后的实测改。）
+  （2026-11-07 再订正：Linux 那个数原写 3720，实测是 3711 选中 / 3717 收集，比 Windows **少 1**；
+  归因与逐文件对账见 README 测试一节的同日订正。）
 
 ### Tests（2026-11-02，节点检查器投影态：前端换文案这件事终于有判据）
 
@@ -101,6 +195,27 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   逐字段一致——mock 一漂移，门就在验一个不存在的契约，而那种漂移在手动门里永远看不出来。
 - 窄变异 5 条全 RED（前端判定写死 false / 写死 true / 删掉用例最后一条断言 / 整块删用例 /
   后端把 `max_retries` 改成 0），每条注入后字节级还原并核 sha256。
+
+### Added（2026-11-01/02，控制台三面：Runs 深链 / Settings / Workflows & Schedules；PR #90 #91 #93，代记）
+
+> 这条由 qoder 代 zcode 记：#90/#91/#93 改的是 `admin_api.py` / `dashboard` / `openapi_spec`，
+> 没动 CHANGELOG，而发版说明是 `release.yml` 从本文件按版本段抽的——不补，这三面在 3.17.0
+> 的 Release notes 里就不存在。**功能与判据归各 PR 的作者**，这里只补索引。
+
+- **Runs 面深链**（#91）：`#/runs/<id>` 可直接打开某次运行的详情，列表加状态过滤；
+  视觉改版（浅色精致默认 + `[data-theme=dark]` 可切）与卡片/底布分层；凭据 `TOKEN_KEY`
+  仍只在 sessionStorage，localStorage 只许非凭据偏好键，并反向断言凭据键不得出现。
+- **Settings 面 v1（只读）**（#90）：运行配置快照（key/secret/token/password 一律掩码）、
+  预算（复用 `/api/cost`）、集成（webhook 列表；MCP 与队列没有读端点，界面如实标注）、
+  版本与配置审计。写操作刻意不做，界面写明边界。随后修掉集成行读后端不返回的 `w.url`
+  导致的空箭头（`f59a4d8`，随 #91 合入）。
+- **Workflows & Schedules 面**（#93）：新增只读 `GET /api/schedules`——`lease_state` 三态
+  （held/stale/free）由服务端按时点算好，前端不拿本机时钟自比；store 缺席给空表不编数据。
+  前端新卡：工作流表（`/api/pipeline` 名单 + `/api/locks` 三值锁徽章：一致/漂移/未验证，
+  `matches` 为 null 时不得画成"一致"；漂移行带问题数并指向 `loom plan --diff`）与排程表
+  （cron / 启停 / 上次 / 下次触发 / 租约态；空态如实标注）。OpenAPI 补 `/api/schedules`。
+- 判据：#90 +4、#91 +9、#93 +8，各带真 Chrome 门实测（Settings 11 项、深链/主题/分层
+  11+13+8 项、Workflows 11 项）。
 
 ### Fixed（2026-10-31，控制台审计与节点检查器；PR #87，代记）
 
@@ -164,6 +279,22 @@ YAML 里 `gc_seconds:` 只写键不给值时读回来是 `None`，旧写法 `int
 2711→2758、`_handle_deliveries` 1894→1941、`_handle_delivery_detail` 1912→1959、
 `_handle_locks` 1972→2019）——这 8 条漂移是 #87 自己往上加代码推出来的，不是 main 的账；
 重钉后实跑 `checked=52 mismatched=0`。
+
+### Security（2026-10-30，SQLite 标识符强制校验；PR #84）
+
+Mimosa 深度审计的 35 条 findings 逐条对源码分诊，唯一真实插值点在 `sqlite_util`：SQL 标识符
+无法参数化，原先靠"调用方只传字面常量"的约定保安全。现在表名/列名必须匹配
+`^[A-Za-z_][A-Za-z0-9_]*$`，动态拼出的值直接 `ValueError`；DDL 类型片段拒绝 `;` `--` `/*`
+等结构字符。真调用方（`task_queue` 4 处、`db_backend` 透传）零改动照常工作；判据 +5。
+
+### Fixed（2026-10-29，交付账本清理只碰终态；PR #81）
+
+`deliveries.cleanup` 的两条 DELETE 没有状态过滤：年龄/数量判据会把**进行中**的账本行删掉，
+而 `run_store.cleanup` 早已是终态口径——两边漂了。现在 `TERMINAL_STATUSES` 自 `run_store`
+引入（单一事实源，两处不得漂），候选先圈定终态行再按双判据并集逐行 DELETE（走
+`db_backend` 双方言，避开自表 `NOT IN (SELECT …)` 的语义坑）。年龄判据对保留集内仍生效、
+`0/0` 仍返回 0。判据 +3：进行中的行连年龄判据都不碰、也不占"最近 N 条"名额、终态三值与
+`run_store` 同源。
 
 ### Docs（2026-10-29，#10：SDK 从"存在"变成"可发现"）
 

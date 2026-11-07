@@ -72,24 +72,31 @@ ANCHORS = [
     ("loom_core/pipeline.py", 1515, "pipeline.finished"),    # _finalize_plan_task_async 内
     ("loom_core/pipeline.py", 1776, "record"),               # _deliver 内 DeliveryLedger().record
     ("loom_core/pipeline.py", 1882, "pipeline.audit"),
-    ("loom_core/pipeline.py", 2049, ".done"),
-    ("loom_core/admin_api.py", 671, "get_task"),
-    ("loom_core/admin_api.py", 1072, "list_tasks"),
+    # 2026-11-06：#106（C-23）给 resolve_pipeline_name 的 docstring 加了 4 行，
+    # 只有这一条在其下方，2049→2053；同批其余 pipeline 锚点都在改动点之上，未动。
+    ("loom_core/pipeline.py", 2053, ".done"),
+    # 2026-11-06 再钉一次：控制台三面（#90/#91/#93）在 admin_api.py 里加删代码，
+    # 这组 10 条整批下移（1072→1074 … 2019→2052，偏移不是常数，按整行文本对齐）。
+    # 2026-11-07 第三次：批次一（#107 F1 / #108 F2 / #109 F3 / #110 F4+F5）又在 admin_api.py
+    # 增删了路由与校验，这组锚点再次整体下移（+83…+104，偏移同样不是常数）；
+    # 逐条按**整行原文**在合并后的树上重新定位，未按偏移推算。
+    ("loom_core/admin_api.py", 754, "get_task"),
+    ("loom_core/admin_api.py", 1177, "list_tasks"),
     # Stage 2：/tasks、dashboard、cost 三处读口从 `list_tasks`（内存）换成
     # `list_runs`（内存缓存 ∪ 投影）——锚点跟着换而不是删，否则"读侧已并轨"
     # 这句话在表里就没有对应物了。
-    ("loom_core/admin_api.py", 1090, "list_runs"),
-    ("loom_core/admin_api.py", 1436, "def _task_checkpoint_view"),
-    ("loom_core/admin_api.py", 1835, "list_runs"),
-    ("loom_core/admin_api.py", 2325, "list_runs"),
-    ("loom_core/admin_api.py", 2689, "task = _aio.run(orch.run_plan_async("),
-    ("loom_core/admin_api.py", 2758, "existing_callback = get_callback(task_id)"),
+    ("loom_core/admin_api.py", 1195, "list_runs"),
+    ("loom_core/admin_api.py", 1541, "def _task_checkpoint_view"),
+    ("loom_core/admin_api.py", 1941, "list_runs"),
+    ("loom_core/admin_api.py", 2462, "list_runs"),
+    ("loom_core/admin_api.py", 2826, "task = _aio.run(orch.run_plan_async("),
+    ("loom_core/admin_api.py", 2895, "existing_callback = get_callback(task_id)"),
     # #8：账本与锁的只读 HTTP 面。三条 handler 进表，"文档教了这三个口"才在代码里
     # 有对应物（`test_doc_consistency` 只把文档对到 openapi 规范，规范和 handler
     # 之间没人守——这条就是补那段距离的）。
-    ("loom_core/admin_api.py", 1941, "def _handle_deliveries"),
-    ("loom_core/admin_api.py", 1959, "def _handle_delivery_detail"),
-    ("loom_core/admin_api.py", 2019, "def _handle_locks"),
+    ("loom_core/admin_api.py", 2047, "def _handle_deliveries"),
+    ("loom_core/admin_api.py", 2065, "def _handle_delivery_detail"),
+    ("loom_core/admin_api.py", 2156, "def _handle_locks"),
     # 锁路径解析只留一处：巡检口（`lock_drift`）与执行口（`_verify_lock_after_parse`）
     # 各自解析一次就会报出执行时根本不会发生的漂移。
     ("loom_core/scheduler.py", 338, "def resolve_lock_path"),

@@ -21,7 +21,7 @@ DAG 编排、消息总线、重试/熔断/限流、检查点与 Agent 加载。
 # 取它，而本包在第 31 行就导入该子模块 —— 定义放在下面时那次导入发生在
 # 包初始化中途，ImportError 被 except 吞掉，MCP 的 serverInfo.version 因此
 # 长期报 "unknown"（而本模块第 18 行的示例文档写的是真实版本号）。
-__version__ = "3.16.0"
+__version__ = "3.17.0"
 
 from .agent_loader import AgentLoader
 from .alert_manager import alert, clear_alerts, get_alerts

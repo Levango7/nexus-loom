@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexusloom"
-version = "3.16.0"
+version = "3.17.0"
 description = "Loom (nexusloom) - a self-hosted agent workflow runtime for verifiable delivery: declarative YAML DAGs, output contracts, reproducible locks, approval gates and an auditable delivery ledger"
 readme = "README.md"
 license = {text = "MIT"}
