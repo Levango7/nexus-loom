@@ -98,23 +98,39 @@ kb.search("本季度营收增长多少", top_k=3)        # 向量检索
 ### 前置条件
 
 - Python 3.11+
-- 网络连接（用于检索引擎抓取内容）
-- 搜索引擎 API Key（可选）— 复制 `.env.example` 为 `.env` 并填入 Bocha/Tavily/Serper 等 Key；无 Key 时默认使用 Bing/Sogou/360 免费引擎
+- **第一步（离线体验）不需要网络、不需要任何 Key**
+- 第二步（检索式流水线，默认 `docgen`）才需要：网络连接（检索引擎抓取内容）+ 搜索引擎 API Key（可选）— 复制 `.env.example` 为 `.env` 并填入 Bocha/Tavily/Serper 等 Key；无 Key 时默认使用 Bing/Sogou/360 免费引擎
 
-### 3 步快速体验
+### 第一步：离线跑通（无网络、无 Key、十几秒）
 
 ```bash
 # 1. 安装依赖
 pip install -r requirements.txt
 
-# 2. 生成文档
+# 2. 沙盒里跑一次完整交付（沙盒建在当前目录下，不动你的工程）
+python run.py demo
+```
+
+产出：沙盒目录 `loom-demo-<时间戳>/deliverables/` 下的 `demo-report.md` / `.html` / `.docx`，
+质量门按七个维度真实给分，交付账本 `deliveries.db` 落一行 `status=done`。
+`demo` 流水线只有 `transform → quality_gate → checker → layout → safe_writer → renderer`
+六个节点：**不检索、不抓取、不调 LLM**，所以它不需要网络与 Key。
+改沙盒里的 `input.md` 或流水线再跑，分数会跟着变（评分是真算的，不是写死的样例）。
+
+这一步跑通 = 你的环境已经完整走完「声明式编排 → 产出契约 → 质量门 → 交付账本」这条链。
+
+### 第二步：走联网 + LLM 全路径
+
+```bash
+# 生成文档（默认流水线 docgen：researcher 检索 + writer 成稿）
 python run.py test_input.md -o output/my_doc.md
 
-# 3. 查看结果
+# 查看结果
 type output\my_doc.md
 ```
 
-输入文件是一行主题描述，输出是结构化 Markdown 文档。
+输入文件是一行主题描述，输出是结构化 Markdown 文档。这一步需要网络与检索 Key；
+看到「检索 0 条」或超时，先回来核对 `.env` 里的 Key 与出网情况。
 
 ### 安装
 
@@ -168,7 +184,9 @@ for art in client.artifacts(task["id"]):
 | `loom lock [name]` | 生成/刷新锁文件后退出（与 YAML 同目录：核心落 `pipelines/*.lock`，pack 落 `packs/<pack>/pipelines/*.lock`；纯维护动作，不执行流水线） |
 | `loom pack list` | 列出 pack 清册（物理 pack + 散装流水线） |
 | `loom pack check` | 运行启动自检（等价 `--check`） |
+| `loom pack new <name>` | 生成新 pack 骨架（目录 + 模板文件；只生成，不注册不校验） |
 | `loom plugin list` | 列出全部 Agent / 插件（含来源标记） |
+| `loom demo` | 离线体验：沙盒里跑一次完整交付（无网络无 Key；沙盒建在 cwd 下） |
 
 **其余参数**（服务/运维开关保持 flag）：
 
@@ -1127,7 +1145,11 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3765 个测试本机全绿**（`3765 passed, 24 skipped, 6 deselected`，2026-11-07 按 +8 条
+**3770 个测试本机全绿**（`3770 passed, 24 skipped, 6 deselected`，2026-11-07 按 +5 条
+（L5-01/L5-02 第一公里：快速开始改两段式——先 `loom demo` 离线闭环（新机装完依赖就有产出），
+再联网 + LLM 全路径；CLI 动词表补齐 `loom demo` 与 `loom pack new`。判据＝从 `run.py` 反推动词
+（新增动词不写文档即红）+ 离线排在联网之前 + demo 流水线节点集合钉住「全离线」+
+**真跑一遍 `python run.py demo`** 断言三件交付物与账本落行）自 3765 同 skipped 集推为；同日 2026-11-07 按 +8 条
 （F4/F5 文案契约：非法 JSON 的 400 从两种拼法（`invalid JSON body` 4 处 / `请求体不是合法
 JSON` 3 处）收敛为 `CANONICAL_INVALID_JSON` 一个常量——理由是向 spec 已声明的 400 描述对齐，
 不是「哪边多一个」；`output` 字段两处内部 docstring 改为与 docs/api.md 同口径「只做白名单
@@ -1204,19 +1226,22 @@ SKIPPED 集合未变）；
 `3688 passed` 自此是字面实测值，不再含 xfailed——合 #106 后本机全量复跑证实：
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
-再并入批次一（#107–#110，+77 条）后声明的 3765 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3789 / 3795**（Windows 本机，合 main 后 `--co -q` 实测）/
-**3788 / 3794**（Linux CI = Windows − 1，机制见下；逐腿以 CI 日志为准），
-（2026-11-07 订正：原文写「Linux **3797**，多 8 条为 POSIX-only 用例」，**机制不成立**。
-在上一轮 main（`e557a3c`）上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 /
-3.14.10，pytest 8.3.4，都挂真 PG）逐腿读到 `collected 3717 items / 6 deselected / 3711 selected`
-与 3700 passed、11 skipped；本机同 SHA `--co -q` 读到 3712/3718——即 Linux 比 Windows **少 1 条**。
+再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
+实际收集（选中 / 收集）：**3794 / 3800**（Windows 本机，合 main 后 `--co -q` 实测）/
+**3793 / 3799**（Linux CI = Windows − 1，机制见下；已有两次独立印证），
+（2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
+两次独立实测都是 Linux 比 Windows **少 1 条**：
+① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，
+pytest 8.3.4，都挂真 PG）逐腿读到 `collected 3717 items / 6 deselected / 3711 selected`
+与 3700 passed、11 skipped，本机同 SHA `--co -q` 读 3712/3718；
+② 在 `8c9bc52`（批次一合流后）上 CI 的 3.14 腿读到 `collected 3794 items / 6 deselected /
+3788 selected`、3777 passed + 11 skipped，本机同内容树 `--co -q` 读 3789/3795。
 差的那一条已归因：`tests/test_html_backend.py:94` 的
 `@pytest.mark.parametrize("backend", _available_kernels() or ["modest"])` 按**环境里真能导入的
 selectolax 内核**动态参数化（`_available_kernels()` 在同文件 42–49 行，走生产同一条 `_load` 探测）：
-本机 `modest` + `lexbor` 两个 ⇒ 2 条，CI 只有 `lexbor` ⇒ 1 条；那一轮逐文件对账 165 个文件里
-164 个计数相等，只差这一个。合并批次一后这个前提未变（该文件与那条参数化都没被动过；
-批次一新增的 5 个测试文件里也没有动态参数化），故仍按 −1 记。
+本机 `modest` + `lexbor` 两个 ⇒ 2 条，CI 只有 `lexbor` ⇒ 1 条；第一次对账时 165 个测试文件里
+164 个计数逐一相等，只差这一个。此后合入的批次一与 #111 都没碰它那条参数化（新测试文件里
+也没有动态参数化），故仍按 −1 记。
 全仓唯一按平台条件的是 `tests/test_requirements_analyzer.py:149` 的
 `skipif(sys.platform != "linux")`，它影响 **skipped**、不影响收集数。）
 差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
