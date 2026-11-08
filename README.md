@@ -1145,7 +1145,15 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3788 个测试本机全绿**（`3788 passed, 24 skipped, 6 deselected`，2026-11-08 按 +8 条
+**3796 个测试本机全绿**（`3796 passed, 24 skipped, 6 deselected`，2026-11-08 按 +8 条
+（批次二 L2「面板三态呈现」：F4 `/health` 与 `/api/dashboard` 两源绕过了 `settle`、失败被折成
+`null` ⇒ Tasks/Agents 面板谎报「暂无活跃任务 / 0 / No agents registered」（其余 11 个源都走了
+`settle` + `renderPanelError`，最核心的两块漏了）——改为同口径，并给三个渲染器补「先失败、后空态」
+的前置守卫；F4b `index.html` 里 7 块面板的静态占位是「暂无…」，首屏（含 4s 超时窗口）一律自称
+"没有了" ⇒ 新增 `renderFirstPaint()` 在第一次 fetch 前把 7 块换成「加载中…」。判据＝绑定敏感文本
+解析 8 条，含根因形态（`settle(results[0])`）、三渲染器「error 先于 empty」顺序、首屏覆盖 7 块且
+调用先于 `update()`，另含两条**前提可复核**断言（`renderPanelError` 的标记契约、index.html 的静态
+文案仍在））自 3788 同 skipped 集推为；同日 2026-11-08 按 +8 条
 （批次二 L2「审批收件箱交互」：F2 收件箱两个主操作按钮用的是只在 `.error-overlay` 作用域内
 有声明的 `retry-btn` ⇒ 零命中、退化成浏览器原生灰按钮，改为站内已有的
 `.approval-actions` + `btn-approve`/`btn-reject`；F16 `decideApproval` 补在途防重（`approvalInFlight`
@@ -1237,8 +1245,8 @@ SKIPPED 集合未变）；
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
 再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3812 / 3818**（Windows 本机，并 main 后本批 +8 条 `--co -q` 实测）/
-**3811 / 3817**（Linux CI = Windows − 1，机制见下；已有两次独立印证；本批 +8 条按同一机制推），
+实际收集（选中 / 收集）：**3820 / 3826**（Windows 本机，两批共 +16 条后 `--co -q` 实测）/
+**3819 / 3825**（Linux CI = Windows − 1，机制见下；已有两次独立印证；两批共 +16 条按同一机制推），
 （2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
 两次独立实测都是 Linux 比 Windows **少 1 条**：
 ① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，

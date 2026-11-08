@@ -267,8 +267,12 @@
       if (r.reason && r.reason.status === 403) return { __forbidden: true };
       return { __error: r.reason && r.reason.message || '请求失败' };
     };
-    const health = results[0].status === 'fulfilled' ? results[0].value : null;
-    const dash = results[1].status === 'fulfilled' ? results[1].value : null;
+    // 这两个源此前**绕过了 settle**，把失败直接折成 null ⇒ 渲染层只能画成"空态"，
+    // 于是 `/health` 或 `/api/dashboard` 挂掉时，Tasks / Agents 面板会谎报
+    // 「暂无活跃任务 / 0 / No agents registered」（实测：真话只剩卡头那行 0.75rem 小字
+    // "部分数据不可用"）。其余 11 个源都走 settle ⇒ 统一走它，让失败带上 `__error`/`__forbidden`。
+    const health = settle(results[0]);
+    const dash = settle(results[1]);
     return {
       health,
       tasks: dash || null,           // /api/dashboard 含 tasks[].progress/steps 与 agents
@@ -297,8 +301,32 @@
   // Renderers
   // ----------------------------------------------------------
 
+  /* ---- 首屏加载态（F4b） ----
+     `index.html` 里这 7 块的静态占位写的是「暂无任务 / 暂无日志 / 没有等待审批的运行 …」，
+     而首屏要等服务端（还有 4s 超时窗口）—— 期间用户看到的是"什么都没有"，不是"还在加载"；
+     叠加 F4（失败也画空态）后，三种状态在界面上完全同形。这里在第一次 fetch 之前把
+     这 7 块换成明确的「加载中…」，让三态从首屏起就可区分。
+     （Metrics / Settings / Workflows 三块 index.html 本来就写了加载文案，不在此列。） */
+  function renderFirstPaint () {
+    const panels = [
+      [els.statusPanel, 'i-status'],
+      [els.tasksPanel, 'i-tasks'],
+      [els.agentsPanel, 'i-agents'],
+      [els.qualityPanel, 'i-quality'],
+      [els.costPanel, 'i-cost'],
+      [els.logsPanel, 'i-logs'],
+      [els.approvalsPanel, 'i-check'],
+      [els.deliveriesPanel, 'i-download'],
+    ];
+    for (const [panel, icon] of panels) {
+      if (panel) panel.replaceChildren(emptyState(icon, '加载中…'));
+    }
+  }
+
   /* ---- Pipeline Status (top-left) ---- */
   function renderStatus (health) {
+    // 失败与"没有数据"必须分开画：前者是「读取失败：HTTP 500」，后者才是"暂无"。
+    if (renderPanelError(health, els.statusPanel, els.badgeStatus, 'i-status')) return;
     if (!health || !health.status) {
       els.statusPanel.replaceChildren(emptyState('i-status', '暂无状态数据'));
       return;
@@ -356,6 +384,9 @@
 
       /* ---- Tasks (top-right) ---- */
   function renderTasks (data) {
+    // 与其余 11 个面板同口径：/api/dashboard 取不到时画「读取失败：…」，
+    // 而不是把面板画成「暂无活跃任务 + 0」——那是**谎报**（F4/评审 §4.2）。
+    if (renderPanelError(data, els.tasksPanel, els.badgeTasks, 'i-tasks')) return;
     const all = (data && data.tasks) || [];
     const count = data && data.task_count != null ? data.task_count : all.length;
     // Runs 面状态过滤（评审 §4.2）：只影响列表，徽章仍报总任务数。
@@ -921,6 +952,8 @@
 
   /* ---- Agents (bottom-left) ---- */
   function renderAgents (data) {
+    // 同 renderTasks：取不到就画「读取失败：…」，别画「No agents registered」（F4）。
+    if (renderPanelError(data, els.agentsPanel, els.badgeAgents, 'i-agents')) return;
     // agents can be an object { name: {...} } or an array
     let list = [];
     if (data && data.agents) {
@@ -1967,6 +2000,7 @@
     // 深链：URL 带 #/runs/<id> 首屏直达；前进/后退同步视图。
     window.addEventListener('hashchange', routeFromHash);
     els.lastUpdated.textContent = 'Loading…';
+    renderFirstPaint();
     update().then(scheduleRefresh).catch(() => scheduleRefresh());
     routeFromHash();
   }
