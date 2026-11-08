@@ -1145,7 +1145,13 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3780 个测试本机全绿**（`3780 passed, 24 skipped, 6 deselected`，2026-11-08 按 +10 条
+**3788 个测试本机全绿**（`3788 passed, 24 skipped, 6 deselected`，2026-11-08 按 +8 条
+（批次二 L2「审批收件箱交互」：F2 收件箱两个主操作按钮用的是只在 `.error-overlay` 作用域内
+有声明的 `retry-btn` ⇒ 零命中、退化成浏览器原生灰按钮，改为站内已有的
+`.approval-actions` + `btn-approve`/`btn-reject`；F16 `decideApproval` 补在途防重（`approvalInFlight`
+成对 add/delete）、在途态（`disabled` + 「处理中…」）与**就地失败通告**（落 `state.approvalError`，
+扛过 5s 整面板重画；不再只有一个关掉即无痕的 `alert`）。判据＝审批段文本解析 8 条，含射程自证、
+「旧类名不得回潮」+ CSS 作用域互证、防重绑定形态、失败赋值形态）自 3780 同 skipped 集推为；同日 2026-11-08 按 +10 条
 （L2 配色门禁：`tests/test_dashboard_contrast.py` 10 条——浅/深两套主题共 84 组文本配对 +
 6 条内联指标色（90 组），按 WCAG 实算；修前实算 **30/90 不达标**（浅 25 + 深 2 + 内联 3），
 修后 0/90；另含四条反漂移判据：新增语义色规则必须进表、`--tint-X` 与 `--status-X` 同源、
@@ -1231,8 +1237,8 @@ SKIPPED 集合未变）；
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
 再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3804 / 3810**（Windows 本机，合 main 后 `--co -q` 实测）/
-**3803 / 3809**（Linux CI = Windows − 1，机制见下；已有两次独立印证；本批 +10 条按同一机制推），
+实际收集（选中 / 收集）：**3812 / 3818**（Windows 本机，并 main 后本批 +8 条 `--co -q` 实测）/
+**3811 / 3817**（Linux CI = Windows − 1，机制见下；已有两次独立印证；本批 +8 条按同一机制推），
 （2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
 两次独立实测都是 Linux 比 Windows **少 1 条**：
 ① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，
