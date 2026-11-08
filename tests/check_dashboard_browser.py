@@ -69,6 +69,95 @@ IN_MEMORY_NODE_PAYLOAD = {
 
 
 
+#: 真浏览器侧的配色复核（L2-01/L2-02）。静态门禁 `test_dashboard_contrast.py`
+#: 解析 CSS 后按模型实算；这里按 `getComputedStyle` 量同一批配对——静态模型与真级联
+#: 一旦分叉（被更高优先级规则覆盖、内联样式、继承字号变化），只有这一面看得见。
+CONTRAST_PROBE_JS = r"""
+() => {
+  const parse = (value) => {
+    const m = value.match(/^rgba?\(([^)]+)\)$/);
+    if (!m) return null;
+    const parts = m[1].split(',').map((s) => parseFloat(s.trim()));
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+  };
+  const over = (top, base) => ({
+    r: Math.round(top.r * top.a + base.r * (1 - top.a)),
+    g: Math.round(top.g * top.a + base.g * (1 - top.a)),
+    b: Math.round(top.b * top.a + base.b * (1 - top.a)),
+  });
+  const lum = (c) => {
+    const f = (v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+  };
+  const ratio = (a, b) => {
+    const l1 = lum(a), l2 = lum(b);
+    const hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const backgroundOf = (el) => {
+    const chain = [];
+    for (let node = el; node; node = node.parentElement) {
+      const bg = parse(getComputedStyle(node).backgroundColor);
+      if (bg && bg.a > 0) chain.push(bg);
+      if (bg && bg.a === 1) break;
+    }
+    chain.push({ r: 255, g: 255, b: 255, a: 1 });
+    let current = chain[chain.length - 1];
+    for (let i = chain.length - 2; i >= 0; i -= 1) current = over(chain[i], current);
+    return current;
+  };
+  const host = document.createElement('div');
+  host.className = 'card';
+  host.innerHTML = `
+    <div class="card-body">
+      <span class="badge-status running">running</span>
+      <span class="badge-status pending">pending</span>
+      <span class="badge-status done">done</span>
+      <span class="badge-status failed">failed</span>
+      <span class="status-pill ok">ok</span>
+      <span class="status-pill error">error</span>
+      <div class="agent-item ok"><span class="agent-status-tag ok">ok</span></div>
+      <div class="agent-item error"><span class="agent-status-tag error">error</span></div>
+      <div class="stat-item"><div class="stat-value ok">7</div></div>
+      <div class="stat-item"><div class="stat-value warn">7</div></div>
+      <div class="metric-card"><div class="metric-body"><div class="metric-value"
+        style="color: var(--status-warn)">7</div></div></div>
+      <div class="approval-bar">
+        <button class="btn-approve">放行</button>
+        <button class="btn-reject">驳回</button>
+      </div>
+      <div class="newtask-msg">已提交</div>
+    </div>`;
+  document.body.appendChild(host);
+  try {
+    const targets = Array.from(host.querySelectorAll(
+      '.badge-status, .status-pill, .agent-status-tag, .stat-value, .metric-value,'
+      + ' .btn-approve, .btn-reject, .newtask-msg'));
+    const submit = document.querySelector('#nt-submit');
+    if (submit) targets.push(submit);
+    return targets.map((el) => {
+      const style = getComputedStyle(el);
+      const fg = parse(style.color);
+      const bg = backgroundOf(el);
+      const px = parseFloat(style.fontSize);
+      const weight = parseInt(style.fontWeight, 10) || 400;
+      const large = px >= 24 || (px >= 18.66 && weight >= 700);
+      return {
+        selector: el.id ? '#' + el.id : '.' + String(el.className).split(' ').join('.'),
+        ratio: ratio(fg, bg),
+        need: large ? 3 : 4.5,
+      };
+    });
+  } finally {
+    host.remove();
+  }
+}
+"""
+
+
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -303,6 +392,20 @@ def check(browser, base: str) -> None:
             + "——它们会被放给静态服务器变 404，页面只显示'部分数据不可用'，那几块等于没验"
         )
         assert not errors, errors
+
+        # 配色（L2-01/L2-02）：静态门禁实算的是"CSS 模型"，这里量的是浏览器真级联。
+        # 两层都过才说明"改对了"，而不是"改得符合我对 CSS 的想象"。
+        for theme in ("light", "dark"):
+            page.evaluate("(t) => document.documentElement.setAttribute('data-theme', t)", theme)
+            report = page.evaluate(CONTRAST_PROBE_JS)
+            assert len(report) >= 15, f"{theme}: 探针只量到 {len(report)} 个元素，覆盖面缩水了"
+            bad = [item for item in report if item["ratio"] < item["need"]]
+            assert not bad, f"{theme} 主题真浏览器实算不达标：{bad}"
+        page.evaluate("() => document.documentElement.removeAttribute('data-theme')")
+        report = page.evaluate(CONTRAST_PROBE_JS)
+        bad = [item for item in report if item["ratio"] < item["need"]]
+        assert not bad, f"默认（浅色）主题真浏览器实算不达标：{bad}"
+        print("PASS: light (default) and dark palettes meet WCAG AA in a real browser")
     finally:
         page.close()
 

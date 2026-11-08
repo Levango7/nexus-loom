@@ -26,18 +26,23 @@
   --border-soft: rgba(16, 24, 40, 0.09);
   --surface-raised: rgba(16, 24, 40, 0.05);
 
-  --status-ok: #16a34a;
-  --status-warn: #d97706;
-  --status-error: #dc2626;
-  --status-done: #15803d;
-  --status-info: #2563eb;
+  /* 2026-11-08 压深到 WCAG AA（正文 4.5:1）：旧 #16a34a 在白卡上只有 3.30、
+     在 tint 底上 2.96，默认主题（浅色）成片不达标。status-done 仍比 status-ok 深一档。 */
+  --status-ok: #166534;
+  --status-warn: #92400e;
+  --status-error: #b91c1c;
+  --status-done: #14532d;
+  --status-info: #1d4ed8;
 
   /* 半透明色底（与对应状态 token 同源，集中定义避免散落硬编码） */
-  --tint-ok: rgba(22, 163, 74, 0.10);
-  --tint-warn: rgba(217, 119, 6, 0.10);
-  --tint-error: rgba(220, 38, 38, 0.10);
-  --tint-info: rgba(37, 99, 235, 0.10);
+  --tint-ok: rgba(22, 101, 52, 0.10);
+  --tint-warn: rgba(146, 64, 14, 0.10);
+  --tint-error: rgba(185, 28, 28, 0.10);
+  --tint-info: rgba(29, 78, 216, 0.10);
+  --tint-highlight: rgba(79, 70, 229, 0.10);
   --on-solid-ok: #ffffff;
+  --on-highlight: #ffffff;
+  --highlight-strong: #4338ca;   /* 实心主按钮 hover：比 --highlight 深一档 */
 
   --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -65,14 +70,18 @@
 
   --status-ok: #34d399;
   --status-warn: #fbbf24;
-  --status-error: #f87171;
+  /* #f87171 在审批条的 tint-warn 底上只有 4.46（驳回按钮），提到 red-300 后 6.50 */
+  --status-error: #fca5a5;
   --status-done: #4ade80;
   --status-info: #60a5fa;
   --tint-ok: rgba(52, 211, 153, 0.12);
   --tint-warn: rgba(251, 191, 36, 0.12);
-  --tint-error: rgba(248, 113, 113, 0.12);
+  --tint-error: rgba(252, 165, 165, 0.12);
   --tint-info: rgba(96, 165, 250, 0.12);
+  --tint-highlight: rgba(139, 147, 255, 0.12);
   --on-solid-ok: #08210f;
+  --on-highlight: #151834;
+  --highlight-strong: #a5b4fc;
 
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.45);
 }
@@ -301,12 +310,12 @@ body {
 }
 
 .status-pill.ok {
-  background: rgba(76, 175, 80, 0.15);
+  background: var(--tint-ok);
   color: var(--status-ok);
 }
 
 .status-pill.error {
-  background: rgba(233, 69, 96, 0.15);
+  background: var(--tint-error);
   color: var(--status-error);
 }
 
@@ -379,7 +388,7 @@ body {
 .badge-status.pending { background: var(--tint-warn); color: var(--status-warn); }
 .badge-status.done    { background: var(--tint-ok); color: var(--status-done); }
 .badge-status.failed  { background: var(--tint-error); color: var(--status-error); }
-.badge-status.waiting { background: var(--tint-info); color: var(--status-info); }
+/* 没有 .waiting 分支：statusClass() 把 waiting 并进 pending，写了也永远命中不到 */
 
 /* 状态点（替代 emoji 指示符） */
 .badge-status .dot {
@@ -543,8 +552,8 @@ body {
 #nt-submit {
   padding: 9px 24px;
   border: 1px solid var(--highlight);
-  background: rgba(233, 69, 96, 0.15);
-  color: var(--highlight);
+  background: var(--highlight);
+  color: var(--on-highlight);
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
@@ -553,7 +562,8 @@ body {
 }
 
 #nt-submit:hover:not(:disabled) {
-  background: rgba(233, 69, 96, 0.3);
+  background: var(--highlight-strong);
+  border-color: var(--highlight-strong);
 }
 
 #nt-submit:disabled {
@@ -621,9 +631,9 @@ body {
   font-weight: 600;
 }
 
-.agent-status-tag.ok { background: rgba(76, 175, 80, 0.15); color: var(--status-ok); }
+.agent-status-tag.ok { background: var(--tint-ok); color: var(--status-ok); }
 .agent-status-tag.warn { background: var(--tint-warn); color: var(--status-warn); }
-.agent-status-tag.error { background: rgba(233, 69, 96, 0.15); color: var(--status-error); }
+.agent-status-tag.error { background: var(--tint-error); color: var(--status-error); }
 
 /* --- Metrics panel ---------------------------------------- */
 .metrics-grid {
@@ -739,7 +749,7 @@ body {
 }
 
 .error-overlay .retry-btn:hover {
-  background: rgba(233, 69, 96, 0.15);
+  background: var(--tint-highlight);
 }
 
 /* --- Responsive ------------------------------------------- */
