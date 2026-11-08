@@ -447,6 +447,15 @@
       if (tdId) {
         tdId.classList.add('task-id-link');
         tdId.title = '查看运行详情';
+        // 此前**没有自己的处理器**：点 ID 会冒泡到整行 ⇒ running 行走的是"展开实时进度"，
+        // 而它的 title/链接样式写的是"查看运行详情" —— 假承诺（实测 tdTitle 与 trTitle 不一致），
+        // 连带结果是 running 的任务在 UI 里**没有进入运行详情的路径**。
+        // 这里补齐：ID 单元格自持处理器，并挡住冒泡（否则两种动作会同时触发）。
+        tdId.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openRun(String(t.id));
+        });
+        makeKeyboardActivatable(tdId, () => openRun(String(t.id)));
       }
       tr.appendChild(tdId);
       tr.appendChild(elt('td', 'task-pipeline', t.pipeline || '—'));
@@ -1196,9 +1205,29 @@
   // ----------------------------------------------------------
   const liveStreams = new Map();
 
+  /* 把实时流行插到对应任务行的**紧后面**（F3a）。
+     原实现只在 `renderTasks` 里插（`if (liveStreams.has(id)) tbody.appendChild(...)`），
+     而列表每 5s 才重画一次 ⇒ 点完要等下一轮才看见行（实测 1.5s 内界面零变化）。
+     任务行当前不在列表里（被过滤掉/已消失）时不强插：交给下一轮 renderTasks。 */
+  function insertStreamRow (id, row) {
+    const panel = els.tasksPanel;
+    if (!panel || !row) return;
+    const rows = panel.querySelectorAll('tr[data-task-id]');
+    for (const tr of rows) {
+      if (tr.dataset.taskId === id) {
+        tr.parentNode.insertBefore(row, tr.nextSibling);
+        return;
+      }
+    }
+  }
+
   function toggleLiveStream (id) {
     if (liveStreams.has(id)) {
-      closeLiveStream(id, 0);
+      // 已经开着：**不再静默关掉**。原实现把它当开关（第二下点即 closeLiveStream(id, 0)），
+      // 而状态在界面上不可见 ⇒ 实测"双击一次，实时进度永远不出现，且没有任何提示"。
+      // 现在语义是"展开"（幂等）：重复触发只把已在的那行滚进视野。
+      const h = liveStreams.get(id);
+      if (h && h.row && h.row.scrollIntoView) h.row.scrollIntoView({ block: 'nearest' });
       return;
     }
     const cell = elt('td');
@@ -1226,6 +1255,7 @@
     const es = new EventSource(url);
 
     liveStreams.set(id, { es, row, fill, text, sectionName });
+    insertStreamRow(id, row);   // 立刻可见（F3a）：别等下一轮 5s 轮询
 
     es.onmessage = (e) => {
       let msg;
@@ -1233,8 +1263,13 @@
       handleLiveEvent(id, msg);
     };
     es.onerror = () => {
-      sectionName.textContent = '连接断开';
-      closeLiveStream(id, 0);
+      // F12：断线提示原先写进一个**同一 tick 就被摘掉**的节点（closeLiveStream(id, 0)），
+      // 而断线往往发生在首次渲染之前（那时行还没进 DOM）⇒ 界面上零反馈（实测
+      // `{"streamRow":false,"disconnectTextVisible":false}`，6 秒后仍为 false）。
+      // 现在：先把行确保插入，再留 4s 让提示可读，之后才摘除。
+      sectionName.textContent = '连接断开（实时进度已停止；点 ID 可看运行详情）';
+      insertStreamRow(id, row);
+      closeLiveStream(id, 4000);
     };
   }
 
@@ -1274,6 +1309,21 @@
         h.sectionName.textContent = (d.error || '生成失败');
         closeLiveStream(id, 1500);
         break;
+      case 'run_event': {
+        // F13：跨进程/重放的运行推的是**这一种帧**（后端 `_send_run_event`：
+        // `{type:"run_event", data:{seq, event, payload, ts}, section:-1, total:0}`），
+        // 原实现只认 section/progress/complete/error ⇒ 落到 default 被忽略，行里长时间
+        // 停在「等待章节事件… / 0%」，只有收尾那一帧 progress 才会跳到终值。
+        // 这里如实画出"有事件在推进"：事件名 + 载荷里可读的一段；**不编百分比**——
+        // 这类帧 section=-1 / total=0，算不出比例，硬算就是编数（宁可只报游标）。
+        const evName = d.event != null ? String(d.event) : '事件';
+        const pl = d.payload || {};
+        const extra = pl.node ? (' · ' + pl.node)
+          : (pl.message ? (' · ' + pl.message) : '');
+        h.sectionName.textContent = '重放事件 · ' + evName + extra;
+        if (d.seq != null) h.text.textContent = '#' + d.seq;   // 运行级游标（不是百分比）
+        break;
+      }
       default:
         break;
     }
