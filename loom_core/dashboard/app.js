@@ -33,6 +33,10 @@
     taskFilter: 'all',
     settings: null,
     workflows: null,
+    /* 最近一次审批动作的失败（`{runId, action, message}`）。存在 state 上而不是直接挂 DOM：
+       面板每 5s 整块重画，挂在节点上的提示活不过一轮（实测：也就是"失败只留一个关掉即
+       无痕的弹窗"的成因之一）。 */
+    approvalError: null,
   };
 
   let refreshTimer = null;
@@ -1386,12 +1390,31 @@
   }
 
   /* ---- Approvals（跨运行待批收件箱） ---- */
+
+  /* 审批失败的就地通告：留在面板里，而不是弹一个关掉即无痕的窗。
+     读 state 而不是直接挂节点（详见 state.approvalError 的注释）：5s 轮询整块重画，
+     挂在 DOM 上的提示活不过一轮。 */
+  function approvalErrorNotice () {
+    const e = state.approvalError;
+    if (!e) return null;
+    const bar = elt('div', 'approval-bar');
+    const msg = elt('span', 'approval-msg');
+    msg.textContent = '审批操作失败（' + e.action + ' ' + e.runId + '）：' + e.message
+      + ' —— 失败不改状态，可直接重试';
+    bar.appendChild(msg);
+    return bar;
+  }
+
   function renderApprovals (data) {
     if (renderPanelError(data, els.approvalsPanel, els.badgeApprovals, 'i-check')) return;
     const items = (data && Array.isArray(data.approvals)) ? data.approvals : [];
     if (els.badgeApprovals) els.badgeApprovals.textContent = String(items.length);
+    const notice = approvalErrorNotice();
     if (!items.length) {
-      els.approvalsPanel.replaceChildren(emptyState('i-check', '没有等待审批的运行'));
+      // 失败通告要活到"待批项已经不在列表里"之后（例如别处已批掉），所以空态也带上它。
+      els.approvalsPanel.replaceChildren(
+        ...(notice ? [notice, emptyState('i-check', '没有等待审批的运行')]
+                   : [emptyState('i-check', '没有等待审批的运行')]));
       return;
     }
     const table = elt('table', 'tasks-table');
@@ -1407,27 +1430,44 @@
       tr.appendChild(elt('td', null, (a.nodes || []).join(', ')));
       tr.appendChild(elt('td', null, Math.round(a.waiting_sec || 0) + 's'));
       const td = elt('td');
-      const ok = elt('button', 'retry-btn', '放行');
+      // 与运行详情那条审批栏**同一套结构与类名**：底座（padding/圆角/光标/字号）来自
+      // `.approval-actions button`，配色来自 `.btn-approve` / `.btn-reject`。
+      // 此处曾写作 `retry-btn` —— 那个类只在 `.error-overlay` 作用域下有声明，
+      // 收件箱里一条都不命中 ⇒ 两个主操作按钮退化成浏览器原生灰按钮（2px 黑边 /
+      // 0 圆角 / Arial / cursor:default），是全站唯一一处「无样式控件」。
+      const actions = elt('div', 'approval-actions');
+      const ok = elt('button', 'btn-approve', '放行');
       ok.type = 'button';
-      ok.onclick = () => decideApproval(a.run_id, 'approve', '');
-      const no = elt('button', 'retry-btn', '驳回');
+      ok.onclick = () => decideApproval(a.run_id, 'approve', '', [ok, no]);
+      const no = elt('button', 'btn-reject', '驳回');
       no.type = 'button';
       no.onclick = () => {
         const reason = prompt('驳回原因（可空）');
         if (reason === null) return;  // 取消不是"空原因"
-        decideApproval(a.run_id, 'reject', reason);
+        decideApproval(a.run_id, 'reject', reason, [ok, no]);
       };
-      td.appendChild(ok);
-      td.appendChild(no);
+      actions.appendChild(ok);
+      actions.appendChild(no);
+      td.appendChild(actions);
       tr.appendChild(td);
       tbody.appendChild(tr);
     }
     table.appendChild(thead);
     table.appendChild(tbody);
-    els.approvalsPanel.replaceChildren(table);
+    els.approvalsPanel.replaceChildren(...(notice ? [notice, table] : [table]));
   }
 
-  async function decideApproval (runId, action, text) {
+  /* 在途审批动作的键集合：防重（同一个 run 的同一个动作在途时不发第二次请求）。
+     此前无防重也无 loading —— 连点会打出多个请求，而"点了没反应"又诱使用户连点。 */
+  const approvalInFlight = new Set();
+
+  async function decideApproval (runId, action, text, buttons) {
+    const key = runId + ':' + action;
+    if (approvalInFlight.has(key)) return;      // 防重：在途即忽略
+    approvalInFlight.add(key);
+    const btns = buttons || [];
+    const labels = btns.map((b) => b.textContent);
+    btns.forEach((b, i) => { b.disabled = true; b.textContent = i === 0 ? '处理中…' : '…'; });
     const token = getToken();
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = 'Bearer ' + token;
@@ -1439,9 +1479,20 @@
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+      state.approvalError = null;               // 成功即撤下上一条失败通告
       await update();
     } catch (err) {
-      alert('审批操作失败：' + (err.message || err));
+      // 失败不再只丢一个 alert（关掉即无痕、也无法回看是哪一条失败）：落进 state，
+      // 由 renderApprovals 就地、跨轮询地呈现。
+      state.approvalError = {
+        runId: String(runId), action,
+        message: (err && err.message) ? err.message : String(err),
+      };
+      renderApprovals(state.approvals);
+    } finally {
+      approvalInFlight.delete(key);
+      // 面板重画过的话这些按钮已脱离文档 ⇒ isConnected 为假，别再动它们。
+      btns.forEach((b, i) => { if (b.isConnected) { b.disabled = false; b.textContent = labels[i]; } });
     }
   }
 
