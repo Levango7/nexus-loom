@@ -281,6 +281,14 @@ class RunStore:
 
         投影行不存在时同样返回 None（`UPDATE` 影响 0 行）：没有行却有终态事件，
         正是补账要消灭的那种半条事实。
+
+        收尾同时**结清该运行的待批**（rejected + by=system + reason，与
+        `pipeline.cancel` 的 `_retire_pending_approvals` 同语义、同幂等守卫）：
+        cancel 会先结再走这里（守卫使其 0 行），backfill/崩溃恢复路径没有
+        cancel 那一步，这里补上——否则收件箱会留一条点不掉的待办（实证 A6）。
+        结清同时置 `consumed = 1`（与 `consume_approval` 同语义）：系统驳回不是
+        给执行器的指令，不留消费位会让同 run_id 的新执行经 `open_decision`
+        把这条旧裁决当闸门信号吃掉，闸门永久武装不上。
         """
         ts = finished_at or time.time()
         with _Txn(self._pool, self._conn()) as txn:
@@ -293,6 +301,29 @@ class RunStore:
                  _fast_dumps(artifacts or []), run_id) + TERMINAL_STATUSES)
             if cur.rowcount <= 0:
                 return None
+            # 结清待批：与 cancel 的 _retire_pending_approvals 同语义。
+            # `WHERE status = ?` 是幂等守卫——cancel 已结过的行这里 0 行，
+            # approval.decided 事件也不会二发（与 decide_approval 同一守卫）。
+            # 同一 UPDATE 置 consumed = 1：系统驳回不留消费位，会被同 run_id
+            # 的新执行经 open_decision 当闸门裁决吃掉（与 consume_approval 同语义）。
+            pending = conn.execute(
+                "SELECT request_id, nodes_json FROM approvals "
+                "WHERE run_id = ? AND status = ?", (run_id, PENDING)).fetchall()
+            for request_id, nodes_json in pending:
+                conn.execute(
+                    "UPDATE approvals SET status = ?, decided_at = ?, decided_by = ?, "
+                    "note = ?, reason = ?, consumed = 1 "
+                    "WHERE request_id = ? AND status = ?",
+                    (REJECTED, ts, "system", "", f"运行已收尾（{status}）",
+                     request_id, PENDING))
+                self._append(
+                    conn, run_id, APPROVAL_DECIDED,
+                    {"request_id": request_id, "decision": REJECTED,
+                     "by": "system", "note": "", "reason": f"运行已收尾（{status}）",
+                     "nodes": _fast_loads(nodes_json) or []}, ts, txn)
+                self._append(
+                    conn, run_id, APPROVAL_CONSUMED,
+                    {"request_id": request_id}, ts, txn)
             return self._append(conn, run_id,
                                 _TERMINAL_EVENT.get(status, RUN_COMPLETED),
                                 {"status": status, "error": error}, ts, txn)
@@ -516,7 +547,7 @@ class RunStore:
 
     # ── 维护：保留期清理（A6：RunStore 此前也无界）───────────
     def cleanup(self, retention_days: int = 0, max_runs: int = 0,
-                now: float | None = None) -> dict[str, int]:
+                now: float | None = None) -> dict[str, int | list[str]]:
         """删除过期运行：`runs`/`run_nodes`/`events`/`approvals` 一次删干净。
 
         只碰**终态**（done/failed/cancelled）的运行——进行中的行一行都不碰
@@ -533,6 +564,9 @@ class RunStore:
         否则留下"运行没了、事件还在"的半条事实（§3 的边界句说的正是这种
         形状）。两次都不启用返回全 0（幂等，也方便健康检查区分"没启用"和
         "跑了但没删到"）。
+        返回 dict 的 `run_ids` 是**被删 run 的集合**：cost.db / quality.db 与
+        runs.db 是各自的库、无 FK，调用方（maintenance.gc_runs）拿它做跨库
+        联动删，不留指向已删运行的悬空行。
         """
         stamp = time.time() if now is None else now
         cutoff = stamp - retention_days * 86400.0
@@ -551,7 +585,8 @@ class RunStore:
                               if float(r[1] or 0) < cutoff]
             to_delete = sorted(set(to_delete))
             if not to_delete:
-                return {"runs": 0, "run_nodes": 0, "events": 0, "approvals": 0}
+                return {"runs": 0, "run_nodes": 0, "events": 0, "approvals": 0,
+                        "run_ids": []}
             # 逐行 DELETE 而非 executemany：psycopg3 的 Connection 没有
             # executemany（只有 Cursor 有），而 _Conn 包装的 execute 在两边
             # 都能用。参数化占位符 ?→%s 由方言翻译层处理，SQL 文本零插值
@@ -567,7 +602,7 @@ class RunStore:
                 n_runs += conn.execute(
                     "DELETE FROM runs WHERE run_id = ?", (rid,)).rowcount
         return {"runs": n_runs, "run_nodes": n_nodes, "events": n_events,
-                "approvals": n_approvals}
+                "approvals": n_approvals, "run_ids": to_delete}
 
     # ── schedules：触发租约（两进程共享一库只允许一个触发者）──────
     # cron 触发此前只有进程内的 tick 循环，两个 `loom --triggers` 指向同一状态
