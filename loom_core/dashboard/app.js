@@ -980,7 +980,7 @@
     if (els.badgeAgents) els.badgeAgents.textContent = count;
 
     if (!list.length) {
-      els.agentsPanel.replaceChildren(emptyState('i-agents', 'No agents registered'));
+      els.agentsPanel.replaceChildren(emptyState('i-agents', '暂无已注册 Agent'));
       return;
     }
 
@@ -1439,7 +1439,9 @@
 
       // If all endpoints failed, treat it as offline
       if (!data.health && !data.tasks) {
-        throw new Error('All API endpoints unreachable');
+        // 中文口径（评审 §4.2「统一中文文案」）：这句会经 state.error 显示在覆盖层上，
+        // 英文技术串对用户毫无指引价值。
+        throw new Error('所有 API 端点均不可达');
       }
 
       state.loaded = true;
@@ -1983,8 +1985,20 @@
     els.errorOverlay.style.display = 'flex';
     els.dashboard.style.display = 'none';
     if (els.errorMsg) {
-      els.errorMsg.textContent =
-        state.error || 'Unable to connect to the Loom API at ' + API_BASE;
+      // **不要覆盖 `#error-msg`**：那句中文指引写明"该怎么办"（加 --admin/--dashboard），
+      // 而原实现用 textContent 把它整个替换成一句英文技术串 ⇒ 指引被顶掉
+      // （实测 `hintInHtmlStillThere:false`），全站最关键的失败路径上反而没有可执行的提示。
+      // 改法：把「指引」（HTML 里写的，常驻不动）与「本次错误详情」（动态）分成两个节点。
+      let detail = els.errorDetail;
+      if (!detail) {
+        detail = elt('p', 'error-detail');
+        els.errorDetail = detail;
+        if (els.errorMsg.parentNode) {
+          els.errorMsg.parentNode.insertBefore(detail, els.errorMsg.nextSibling);
+        }
+      }
+      detail.textContent = (state.error || '无法连接到 Loom API')
+        + '（' + API_BASE + '）';
     }
   }
 
