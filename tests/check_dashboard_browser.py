@@ -133,6 +133,10 @@ CONTRAST_PROBE_JS = r"""
       <div class="dag-node">plain</div>
       <div class="dag-node dag-pending">pending</div>
       <button class="theme-toggle">主题</button>
+    </div>
+    <div class="card-header">
+      <select class="task-filter" aria-label="按状态过滤任务"><option>全部</option></select>
+      <button class="run-back" type="button">返回列表</button>
     </div>`;
   document.body.appendChild(host);
   try {
@@ -155,7 +159,8 @@ CONTRAST_PROBE_JS = r"""
       };
     });
     // 非文本边界（WCAG 1.4.11，3:1）：border 色对「元素自身底面 + 父面」双侧取小。
-    const borderReport = Array.from(host.querySelectorAll('.dag-node, .theme-toggle'))
+    const borderReport = Array.from(host.querySelectorAll(
+      '.dag-node, .theme-toggle, .run-back, .task-filter'))
       .map((el) => {
         const bs = getComputedStyle(el);
         const isLeft = el.classList.contains('dag-pending');
@@ -417,7 +422,7 @@ def check(browser, base: str) -> None:
         for theme in ("light", "dark"):
             page.evaluate("(t) => document.documentElement.setAttribute('data-theme', t)", theme)
             report = page.evaluate(CONTRAST_PROBE_JS)
-            assert len(report) >= 18, f"{theme}: 探针只量到 {len(report)} 个元素，覆盖面缩水了"
+            assert len(report) >= 20, f"{theme}: 探针只量到 {len(report)} 个元素，覆盖面缩水了"
             bad = [item for item in report if item["ratio"] < item["need"]]
             assert not bad, f"{theme} 主题真浏览器实算不达标：{bad}"
         page.evaluate("() => document.documentElement.removeAttribute('data-theme')")

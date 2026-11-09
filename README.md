@@ -1145,7 +1145,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3825 个测试本机全绿**（`3825 passed, 24 skipped, 6 deselected`，2026-11-09 按 +9 条
+**3826 个测试本机全绿**（`3826 passed, 24 skipped, 6 deselected`，2026-11-09 按 +1 条
+（L2 非文本边界 C 方案：`.run-back` 按钮 / `.card-header .task-filter` 下拉两处操作件边界改
+`--border-strong`，其余 6 处 `--border` 消费点按口径登记豁免；判据＝`NON_TEXT_PAIRS` +2
+（双侧取小）+ `BORDER_EXEMPT` 豁免登记 + 消费点普查门）自 3825 同 skipped 集推为；同日按 +9 条
 （批次二 L2「可达性与动效」：**F7** 交付账本行可点却**不可键盘达**（只有 onclick，无 tabindex/键盘触发
 ——而 CSS 早写了 `.row-clickable:focus-visible` 焦点环，元素不可聚焦时那条规则永不生效）；
 **F14 结构性四项**：`<tr>` 上挂 `role="button"` 会把隐式 row 语义抹掉 ⇒ 行级激活改传 `role=null`
@@ -1273,8 +1276,8 @@ SKIPPED 集合未变）；
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
 再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3849 / 3855**（Windows 本机，六批共 +45 条后 `--co -q` 实测）/
-**3848 / 3854**（Linux CI = Windows − 1，机制见下；已有两次独立印证；六批共 +45 条按同一机制推），
+实际收集（选中 / 收集）：**3850 / 3856**（Windows 本机，七批共 +46 条后 `--co -q` 实测）/
+**3849 / 3855**（Linux CI = Windows − 1，机制见下；已有两次独立印证；七批共 +46 条按同一机制推），
 （2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
 两次独立实测都是 Linux 比 Windows **少 1 条**：
 ① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，

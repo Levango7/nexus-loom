@@ -776,7 +776,8 @@ body {
 .run-back {
   margin-left: auto;
   padding: 4px 12px;
-  border: 1px solid var(--border);
+  /* 2026-11-09 非文本边界（WCAG 1.4.11 3:1）：透明底按钮，边框是认出它的唯一线索 */
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-muted);
   border-radius: 6px;
@@ -800,7 +801,8 @@ body {
   border-radius: 6px;
   background: var(--bg-card);
   color: var(--text-primary);
-  border: 1px solid var(--border);
+  /* 2026-11-09 同上：无可见 label 的下拉，边框对卡头/自身底双侧都须 ≥3:1 */
+  border: 1px solid var(--border-strong);
 }
 .task-filter:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
 
