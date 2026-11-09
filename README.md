@@ -1145,7 +1145,17 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3825 个测试本机全绿**（`3825 passed, 24 skipped, 6 deselected`，2026-11-09 按 +9 条
+**3833 个测试本机全绿**（`3833 passed, 24 skipped, 6 deselected`，2026-11-09 按 +8 条
+（批次二 L2「打磨批」：**F6** `.logs-table .log-msg` 注释声称"让 ellipsis 生效"却**没有**后三行
+（`white-space`/`overflow`/`text-overflow`）⇒ 长日志把卡片撑成横向滚动（实测 160 字符无空格消息
+`scrollW 1836 > clientW 1246`）；**F8** 卡头 `#badge-metrics` 是**永久占位符「▲」**（`els.badgeMetrics`
+只在 cacheDom 赋值、**没有任何 renderer 写过它**）⇒ 改为渲染"总消息数"并给 title；
+**F10** `<form>` 无 `novalidate` + `textarea required` ⇒ 浏览器原生气泡先拦、`#nt-msg` 的中文文案
+**永不出现**（实测空提交后 `msgHidden:true`/`posted:0`）⇒ 加 `novalidate` + `aria-describedby`；
+**F11** `/api/pipeline` 失败只 `console.warn` 且列表为空时 `submitTask` **静默省略 pipeline 字段**
+（服务端按默认跑，用户以为选的是默认）⇒ 加载失败与空列表两处都给可见提示；
+另补 **F14② 的另一半**：6 张表全部改走 `tableEl(label)`（`aria-label`），与第 5 组的 `thCell`（`scope`）
+配套。判据＝绑定敏感文本解析 8 条，含 `aria-label` 的 6 张表**去重计数**与两条前提复核）自 3825 同 skipped 集推为；同日 2026-11-09 按 +9 条
 （批次二 L2「可达性与动效」：**F7** 交付账本行可点却**不可键盘达**（只有 onclick，无 tabindex/键盘触发
 ——而 CSS 早写了 `.row-clickable:focus-visible` 焦点环，元素不可聚焦时那条规则永不生效）；
 **F14 结构性四项**：`<tr>` 上挂 `role="button"` 会把隐式 row 语义抹掉 ⇒ 行级激活改传 `role=null`
@@ -1273,8 +1283,8 @@ SKIPPED 集合未变）；
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
 再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3849 / 3855**（Windows 本机，六批共 +45 条后 `--co -q` 实测）/
-**3848 / 3854**（Linux CI = Windows − 1，机制见下；已有两次独立印证；六批共 +45 条按同一机制推），
+实际收集（选中 / 收集）：**3857 / 3863**（Windows 本机，七批共 +53 条后 `--co -q` 实测）/
+**3856 / 3862**（Linux CI = Windows − 1，机制见下；已有两次独立印证；七批共 +53 条按同一机制推），
 （2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
 两次独立实测都是 Linux 比 Windows **少 1 条**：
 ① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，

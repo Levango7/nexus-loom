@@ -103,15 +103,15 @@
       <span id="newtask-status" class="badge">POST /api/tasks</span>
     </div>
     <div class="card-body">
-      <form id="newtask-form" class="newtask-form">
+      <form id="newtask-form" class="newtask-form" novalidate>
         <label for="nt-query">Query（文档主题）</label>
-        <textarea id="nt-query" rows="2" placeholder="例如：Python asyncio 并发编程指南" required></textarea>
+        <textarea id="nt-query" rows="2" placeholder="例如：Python asyncio 并发编程指南" required aria-describedby="nt-msg"></textarea>
         <div class="newtask-row">
           <label for="nt-pipeline">Pipeline
             <select id="nt-pipeline"></select>
           </label>
           <label for="nt-output">Output（可选）
-            <input id="nt-output" type="text" placeholder="output/my_doc.md">
+            <input id="nt-output" type="text" placeholder="output/my_doc.md" aria-describedby="nt-msg">
           </label>
           <button id="nt-submit" type="submit">提交任务</button>
         </div>
@@ -191,7 +191,7 @@
   <div class="card" id="panel-metrics">
     <div class="card-header">
       <h2><svg class="ico" aria-hidden="true"><use href="#i-metrics"/></svg> Metrics</h2>
-      <span id="badge-metrics" class="badge">▲</span>
+        <span id="badge-metrics" class="badge" title="总消息数（发送 + 接收）">…</span>
     </div>
     <div class="card-body">
       <div class="empty-state">
