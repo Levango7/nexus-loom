@@ -9,7 +9,7 @@ from loom_core.base_agent import AgentStatus, BaseAgent, Message
 AGENT_NAME = "char_stats"
 AGENT_VERSION = "0.1.0"
 AGENT_DESC = "外部插件示例：统计上游正文的字符数 / 行数 / 中文字符数"
-AGENT_AUTHOR = "doc-pipeline-example"
+AGENT_AUTHOR = "loom-example"
 AGENT_PRIORITY = 50
 INPUT_TOPICS = ["char_stats.input", "writer.done"]
 OUTPUT_TOPICS = ["char_stats.done"]

@@ -15,7 +15,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "3.1"
 AGENT_DESC = "排版优化 Agent - 智能图表修复、表格对齐（不直接写文件，由 safe_writer 统一写入）"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 70
 INPUT_TOPICS = ["checker.done", "layout.optimize", "layout.input"]
 OUTPUT_TOPICS = ["layout.done"]

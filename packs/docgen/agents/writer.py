@@ -50,7 +50,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "2.0"
 AGENT_DESC = "增强型内容整合 Agent - 多模板、智能分类、引用追踪、TF-IDF 语义匹配"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 30
 INPUT_TOPICS = ["writer.input", "researcher.done", "researcher.partial", "fetcher.done"]
 OUTPUT_TOPICS = ["writer.done", "writer.progress"]
