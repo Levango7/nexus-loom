@@ -812,6 +812,9 @@ artifact_keys），但**不给 `result` 正文本**——它从不落盘（投�
 与 `run_store_health()` 的 `incomplete_runs` / `legacy_runs` 把它报出来，`to_dict()` 里
 也有 `projection` 键。**标记优先于"投影里查得到行"**：终态盖章失败时 `runs` 那一行会
 永远停在 `running`，只看有无行会把它读成正常完成。补账工具（重放终态）本批未做。
+**（此句 2026-11-10 收回：补账工具已于 2026-10-25 落地，见下节「看得见就得能处理」——
+`--replay-incomplete` / `--replay-run` + `loom_core/backfill.py`；"本批未做"是 10-24
+Stage 3b 那批的如实描述，工具落地后这句话就过期了，故留痕收回而非就地抹掉。）
 
 > **B8 引擎收敛（2026-10-27）**：`orch.run()` 现在委托给 `run_plan()` 统一引擎执行，
 > legacy 路径不再"按设计缺投影"——它经由 `run_plan()` 写真实 RunStore 投影，`projection`

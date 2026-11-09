@@ -59,6 +59,17 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
+### Fixed（2026-11-10，设计锚点脚本重钉回绿）
+
+- `scripts/check_design_anchors.py`：origin/main 5bf6445（L4-01 run-metrics）+
+  25aed24（C-23 二次修正）两批把 `pipeline.py`/`dag_executor.py` 推了 6~14 行，
+  10 条锚点（dag_executor×2、pipeline×8）按整行原文逐条重定位，未按偏移推算。
+  实跑 `checked=52 mismatched=0`（rc=0）复验。按脚本自身规矩：本脚本不进 CI，
+  漂移只有手跑才红——这次就是手跑抓出来的。
+- **README 补账工具口径**：Stage 3b 那段末尾的"补账工具（重放终态）本批未做"在
+  2026-10-25 工具落地后已过期，与同页下节自相矛盾。按台账规矩就地留痕收回
+  （旧句保留 + 注明收回原因与落点），不抹历史。
+
 ### Fixed（2026-11-09，L2 非文本边界剩余处置：C 分层——两处操作件边界改 `--border-strong`，其余消费点登记豁免）
 
 - **`.run-back`**（透明底按钮，边框是认出它的唯一线索）与 **`.card-header .task-filter`**

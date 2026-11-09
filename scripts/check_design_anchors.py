@@ -48,8 +48,11 @@ ANCHORS = [
     ("loom_core/run_handle.py", 261, "def _ledger_record"),
     ("loom_core/run_handle.py", 306, "def to_dict"),
     ("loom_core/db_backend.py", 90, "add_column_if_missing"),
-    ("loom_core/dag_executor.py", 855, "def _merge_resumed_nodes"),
-    ("loom_core/dag_executor.py", 986, "def _reuse_completed_node"),
+    # 2026-11-10 再钉一次：origin/main 5bf6445（L4-01 run-metrics）+ 25aed24（C-23 二次修正）
+    # 两批把 dag_executor.py 推了 14 行、pipeline.py 推了 6~14 行（cancel/resume +6、
+    # record +14 等，非常数偏移）；逐条按整行原文重定位，未按偏移推算。
+    ("loom_core/dag_executor.py", 869, "def _merge_resumed_nodes"),
+    ("loom_core/dag_executor.py", 1000, "def _reuse_completed_node"),
     ("loom_core/streaming.py", 154, "_history"),
     # pipeline.py 这一批随 Stage 0（异步并轨）+ Stage 1（双写口）整体下移：Stage 0 插了
     # 4 行字段 + 61 行 helper，Stage 1 又插 7 行 init + 108 行写口。**偏移不是常数**
@@ -61,20 +64,20 @@ ANCHORS = [
     # 6~34 行（pipeline/run_store/dag_executor/db_backend/deliveries 五处、共 17 条），
     # 按整行文本就近重钉后 checked=52 mismatched=0 复验。
     ("loom_core/pipeline.py", 321, "_max_task_history"),
-    ("loom_core/pipeline.py", 753, "def cancel"),
-    ("loom_core/pipeline.py", 791, "def resume"),
+    ("loom_core/pipeline.py", 759, "def cancel"),
+    ("loom_core/pipeline.py", 797, "def resume"),
     # 原 1290「不更新 task_queue」那句 docstring 已被 Stage 0 改掉——退役它，改钉新增的
     # 共用写口：§2 那条裂缝的"已并轨"结论必须指向一个真实存在的函数。
     ("loom_core/pipeline.py", 456, "def _record_plan_terminal_state"),
     # 注：legacy `run()` 已改走同一条发布点，`pipeline.started` 只剩 run_plan() 里这一处
-    ("loom_core/pipeline.py", 1473, "pipeline.started"),
-    ("loom_core/pipeline.py", 1053, "pipeline.finished"),    # _finalize_plan_task 内
-    ("loom_core/pipeline.py", 1515, "pipeline.finished"),    # _finalize_plan_task_async 内
-    ("loom_core/pipeline.py", 1776, "record"),               # _deliver 内 DeliveryLedger().record
-    ("loom_core/pipeline.py", 1882, "pipeline.audit"),
+    ("loom_core/pipeline.py", 1479, "pipeline.started"),
+    ("loom_core/pipeline.py", 1059, "pipeline.finished"),    # _finalize_plan_task 内
+    ("loom_core/pipeline.py", 1521, "pipeline.finished"),    # _finalize_plan_task_async 内
+    ("loom_core/pipeline.py", 1790, "record"),               # _deliver 内 DeliveryLedger().record
+    ("loom_core/pipeline.py", 1888, "pipeline.audit"),
     # 2026-11-06：#106（C-23）给 resolve_pipeline_name 的 docstring 加了 4 行，
     # 只有这一条在其下方，2049→2053；同批其余 pipeline 锚点都在改动点之上，未动。
-    ("loom_core/pipeline.py", 2053, ".done"),
+    ("loom_core/pipeline.py", 2059, ".done"),
     # 2026-11-06 再钉一次：控制台三面（#90/#91/#93）在 admin_api.py 里加删代码，
     # 这组 10 条整批下移（1072→1074 … 2019→2052，偏移不是常数，按整行文本对齐）。
     # 2026-11-07 第三次：批次一（#107 F1 / #108 F2 / #109 F3 / #110 F4+F5）又在 admin_api.py
