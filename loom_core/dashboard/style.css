@@ -498,6 +498,13 @@ body {
   font-family: var(--font-mono);
   font-size: 0.72rem;
   max-width: 0;               /* 配合 table 布局让 ellipsis 生效 */
+  /* F6：注释声称"让 ellipsis 生效"，但原规则里没有后三行 ⇒ 长消息撑出横向滚动
+     （实测 160 字符无空格消息使卡片 scrollWidth 1836 > 1246）。
+     与同文件 `.task-id` 同一套"ellipsis 三件套"，且仍走 `max-width: 0` 的 table 布局约束，
+     所以长消息收进省略号而不是撑宽表格。 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- New Task form ---------------------------------------- */

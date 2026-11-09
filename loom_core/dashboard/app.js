@@ -133,6 +133,14 @@
     return th;
   }
 
+  /* 数据表（F14）：6 张表都没有 caption/aria-label，屏幕阅读器只能报"table"——
+     不知道它装的是什么。label 把它讲清楚（`thCell` 的搭档）。 */
+  function tableEl (label, cls) {
+    const t = elt('table', cls || 'tasks-table');
+    t.setAttribute('aria-label', label);
+    return t;
+  }
+
   function emptyState (iconId, msg) {
     const box = elt('div', 'empty-state');
     const wrap = elt('span', 'icon');
@@ -414,7 +422,7 @@
       return;
     }
 
-    const table = elt('table', 'tasks-table');
+    const table = tableEl('任务列表', 'tasks-table');
     const thead = elt('thead');
     const headRow = elt('tr');
     for (const h of ['ID', 'Pipeline', 'Status', 'Progress']) {
@@ -1049,6 +1057,16 @@
       { icon: 'i-trash',    label: 'DLQ',      value: dlq,      cls: dlq > 0 ? 'error' : 'ok' },
     ];
 
+    // F8：卡头徽标 `#badge-metrics` 原本是**永久占位符** "▲"（没有任何 renderer 写过它，
+    // 实测恒为 ▲），是全站唯一一个无解释的符号。现改写成它真正能提供的数（总消息数），
+    // 与其它 11 个徽标同语义；title 与 index.html 里的占位文案一致（"总消息数（发送 + 接收）"），
+    // 这样初始占位与渲染后的值在语义上接得上。
+    if (els.badgeMetrics) {
+      const total = sent + received;
+      els.badgeMetrics.textContent = total > 0 ? String(total) : '…';
+      els.badgeMetrics.title = '总消息数（发送 + 接收）';
+    }
+
     const grid = elt('div', 'metrics-grid');
     for (const m of items) {
       const card = elt('div', 'metric-card');
@@ -1183,7 +1201,7 @@
       return;
     }
 
-    const table = elt('table', 'tasks-table logs-table');
+    const table = tableEl('运行日志', 'tasks-table logs-table');
     const thead = elt('thead');
     const headRow = elt('tr');
     for (const h of ['Time', 'Level', 'Agent', 'Message']) {
@@ -1389,7 +1407,13 @@
         els.ntPipeline.appendChild(opt);
       }
     } catch (err) {
+      // F11：此前失败只留 console 一行，页面上什么都没有 —— `#nt-pipeline` 没有 option 时
+      // `submitTask` 会**静默省略 pipeline 字段**（服务端按默认流水线跑），用户以为选了默认，
+      // 实际看到的是一个空下拉且毫无提示。现在：在该字段旁放一条就地提示（与提交区共用 #nt-msg），
+      // 提交时若列表为空也会明说而不是静默落到服务端默认。
       console.warn('[Dashboard] 加载流水线列表失败:', err);
+      showTaskMsg('流水线列表加载失败，将按服务端默认流水线提交：' +
+        ((err && err.message) || err), true);
     }
   }
 
@@ -1409,7 +1433,12 @@
       return;
     }
     const body = { query };
-    if (els.ntPipeline && els.ntPipeline.value) body.pipeline = els.ntPipeline.value;
+    if (els.ntPipeline && els.ntPipeline.value) {
+      body.pipeline = els.ntPipeline.value;
+    } else if (els.ntPipeline && els.ntPipeline.options.length === 0) {
+      // F11：空列表时不再静默省略 —— 先把「按服务端默认提交」说在前面再继续。
+      showTaskMsg('流水线列表为空，将按服务端默认流水线「docgen」提交', false);
+    }
     const output = (els.ntOutput && els.ntOutput.value || '').trim();
     if (output) body.output = output;
 
@@ -1513,7 +1542,7 @@
                    : [emptyState('i-check', '没有等待审批的运行')]));
       return;
     }
-    const table = elt('table', 'tasks-table');
+    const table = tableEl('待审批运行', 'tasks-table');
     const thead = elt('thead');
     const hr = elt('tr');
     for (const h of ['运行', '流水线', '闸门', '等待', '操作']) hr.appendChild(thCell(h));
@@ -1618,7 +1647,7 @@
       els.deliveriesPanel.replaceChildren(emptyState('i-download', '还没有交付记录'));
       return;
     }
-    const table = elt('table', 'tasks-table');
+    const table = tableEl('交付账本', 'tasks-table');
     const thead = elt('thead');
     const hr = elt('tr');
     for (const h of ['运行', '流水线', '状态', '完成', '交付物摘要', '节点 / 产物']) {
@@ -1906,7 +1935,7 @@
       if (!pipelines.length) {
         wfb.appendChild(emptyState('i-wrench', '没有可显示的流水线'));
       } else {
-        const table = elt('table', 'tasks-table');
+        const table = tableEl('流水线锁文件', 'tasks-table');
         const thead = elt('thead');
         const hr = elt('tr');
         for (const h of ['Pipeline', '锁文件', '锁状态', '问题']) hr.appendChild(thCell(h));
@@ -1956,7 +1985,7 @@
         sb.appendChild(elt('div', 'insp-empty',
           '没有已登记的排程（triggers.yaml 未配，或服务未带 triggers 启动）'));
       } else {
-        const table = elt('table', 'tasks-table');
+        const table = tableEl('排程', 'tasks-table');
         const thead = elt('thead');
         const hr = elt('tr');
         for (const h of ['名称', 'Pipeline', 'cron', '启停', '上次触发', '下次触发', '租约'])
