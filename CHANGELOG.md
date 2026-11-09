@@ -59,6 +59,23 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
+### Fixed（2026-11-09，L2 非文本边界剩余处置：C 分层——两处操作件边界改 `--border-strong`，其余消费点登记豁免）
+
+- **`.run-back`**（透明底按钮，边框是认出它的唯一线索）与 **`.card-header .task-filter`**
+  （无可见 label 的下拉，坐在铺 `--bg-accent` 的卡头上）：`--border` → `--border-strong`。
+  修前按真实几何取小两处都卡在 accent 面（浅 **1.31** / 深 **1.37**）；修后 `.run-back`
+  **4.44 / 4.09**，`.task-filter` 自身底 card 4.76/4.58 对外侧 accent 4.44/4.09 双侧取小
+  → **4.44 / 4.09**，双主题均 ≥3:1。
+- 其余 6 处声明（8 个选择器：3 个有可见 label 的新建表单输入件、页头/表头底分隔线、
+  卡片/检查器容器边界、检查器内部分隔线）按 WCAG 1.4.11 实务口径登记豁免
+  （`BORDER_EXEMPT` 带具体原因）；`--border` token 本身不动（#117 已定口径）。
+- 判据：`NON_TEXT_PAIRS` +2（`.task-filter` 带 `surface_out` 双侧取小）；新增消费点普查门
+  `test_every_border_consumer_is_judged_or_exempt`（每处 `--border` 消费点要么进判据、
+  要么登记豁免，漏一条即红；豁免理由写"其他"等空话也红）；浏览器门探针把两元件注入
+  真实几何（`.card-header`，外侧即 accent）。变异电池 **8/8**（P1/P2 回退双主题静态红
+  + 真 Chrome 实算红、P3 删豁免登记红、P4 空话理由红、G1 阈值放烂+P1 假绿、
+  G2 普查致盲+P3 假绿），还原后 sha256 字节级一致。
+
 ### Fixed（2026-11-09，L2 非文本图形对比度 3 项：WCAG 1.4.11 图形边界 3:1 双主题不达标）
 
 - **`.theme-toggle` 边框**（`--border-strong`）：浅色 `#bcc7da` 在 `--bg-card` 上只有 **1.70**、

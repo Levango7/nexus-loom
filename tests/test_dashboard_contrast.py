@@ -325,13 +325,33 @@ class NonTextPair(NamedTuple):
     prop: str                  # border-color / border-left-color
     surface: str               # SURFACES 的键（元素自己的 background 会叠上）
     note: str
+    surface_out: str | None = None  # 边界外侧的另一个面（双侧取小，如坐在卡头上的下拉）
 
 
 NON_TEXT_PAIRS = [
     NonTextPair(".theme-toggle", "border-color", "card", "主题切换钮边框（--border-strong）"),
     NonTextPair(".dag-node", "border-color", "accent", "DAG 节点盒边界"),
     NonTextPair(".dag-pending", "border-left-color", "accent", "pending 状态左边条"),
+    # 2026-11-09 §29 C 方案：--border 消费点普查后，这两处是仅剩的"操作件边界即唯一识别"
+    # （透明底按钮 / 无可见 label 下拉），改用 --border-strong；其余 6 处登记豁免。
+    NonTextPair(".run-back", "border-color", "accent",
+                "返回/关闭按钮边框（透明底，边界是认出它的唯一线索）"),
+    NonTextPair(".card-header .task-filter", "border-color", "card",
+                "状态过滤下拉边框（无可见 label，坐卡头/自身底双侧取小）", surface_out="accent"),
 ]
+
+#: `--border`（发丝线）消费点的豁免登记（WCAG 1.4.11 实务口径，2026-11-09 §29 C 方案）：
+#: 这些边界不承担"认出操作件"的职责，不修但必须登记——漏一条，普查门就红。
+BORDER_EXEMPT = {
+    ".newtask-form textarea": "有可见 <label for>（index.html），边界非唯一识别线索",
+    ".newtask-form select": "同上：可见 label 识别该控件",
+    '.newtask-form input[type="text"]': "同上：可见 label 识别该控件",
+    ".header": "页头底分隔线，纯装饰（结构由栅格承载）",
+    ".tasks-table thead th": "表头底分隔线，纯装饰（结构由行列本身承载）",
+    ".card": "卡片容器边界，非操作件（实务主流口径不计）",
+    ".node-inspector": "检查器面板容器边界，非操作件",
+    ".insp-block": "检查器内部分隔线，纯装饰",
+}
 
 #: app.js 用内联样式给指标值上色（CSS-only 普查会漏掉这一族）。
 INLINE_PAIRS = [
@@ -482,6 +502,10 @@ class TestContrast:
         failures: list[str] = []
         for pair in NON_TEXT_PAIRS:
             ratio, fg, bg = _evaluate(pair.selector, pair.surface, tokens, prop=pair.prop)
+            if pair.surface_out is not None:
+                # 边界外侧还贴着另一个面（如下拉坐在卡头上）：双侧取小才是真边界对比
+                outside = _rgb_value(tokens[SURFACES[pair.surface_out][0]], tokens)
+                ratio = min(ratio, _ratio(fg, outside[:3]))
             if ratio < NON_TEXT_THRESHOLD:
                 failures.append(
                     f"{pair.selector} {pair.prop}（{pair.note}）{ratio:.2f} < "
@@ -534,11 +558,41 @@ class TestCoverage:
             + "\n".join(uncovered)
         )
 
+    def test_every_border_consumer_is_judged_or_exempt(self):
+        """`--border` 消费点普查（C 方案 §29 的自我保护）：操作件边界进 NON_TEXT_PAIRS，
+        其余必须带具体原因登记豁免；漏一条 ⇒ 红，不许静默绕过。
+
+        `"var(--border)" in value` 不会误伤 `--border-strong`/`--border-soft`——
+        子串带闭括号，只有完整 token 才命中。
+        """
+        judged = {pair.selector for pair in NON_TEXT_PAIRS}
+        exempt = set(BORDER_EXEMPT)
+        consumers: set[str] = set()
+        for rule in RULES:
+            for prop in ("border", "border-color", "border-top", "border-right",
+                         "border-bottom", "border-left", "border-top-color",
+                         "border-right-color", "border-bottom-color", "border-left-color"):
+                value = rule.decls.get(prop)
+                if value and "var(--border)" in value:
+                    consumers.update(rule.selectors)
+        strays = sorted(consumers - judged - exempt)
+        assert not strays, (
+            "这些 --border 消费点既没进 NON_TEXT_PAIRS 也没登记豁免（按 WCAG 1.4.11 口径"
+            "二选一）：\n" + "\n".join(strays)
+        )
+        overlap = judged & exempt
+        assert not overlap, f"既判又豁免，口径自相矛盾：{sorted(overlap)}"
+        for selector, why in BORDER_EXEMPT.items():
+            assert why and why not in ("其他", "其他原因", "tbc", "TODO"), (
+                f"{selector} 的豁免原因是空话——登记必须具体到'为什么不算识别必需'"
+            )
+
     def test_every_pair_selector_exists(self):
         """反死判据：表里点了名却在 CSS 里不存在的选择器，说明表本身过期了。"""
         all_selectors = {selector for rule in RULES for selector in rule.selectors}
         missing = [pair.selector for pair in PAIRS if pair.selector not in all_selectors]
         missing += [pair.selector for pair in NON_TEXT_PAIRS if pair.selector not in all_selectors]
+        missing += [s for s in BORDER_EXEMPT if s not in all_selectors]
         assert not missing, f"表里的选择器在 style.css 里不存在：{missing}"
 
     def test_pairs_are_unique(self):
