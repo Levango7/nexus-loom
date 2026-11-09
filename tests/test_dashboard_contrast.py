@@ -235,6 +235,27 @@ def _prop(selector: str, *names: str) -> str | None:
     return found
 
 
+_BORDER_COLOR_CHUNK = re.compile(r"^(var\(--[\w-]+\)|#|rgba?\(|transparent)")
+
+
+def _border_prop(selector: str, prop: str) -> str | None:
+    """border 类属性取值；声明成 `border:` 简写时取其中颜色段。
+
+    只认 `var(--…) / #… / rgb… / transparent` 开头的块——`1px`、`solid` 这些
+    宽度/线型段不会撞上这个前缀，简写里颜色段也总是它们之一。
+    """
+    value = _prop(selector, prop)
+    if value:
+        return value
+    shorthand = _prop(selector, "border")
+    if not shorthand:
+        return None
+    for chunk in shorthand.split():
+        if _BORDER_COLOR_CHUNK.match(chunk):
+            return chunk
+    return None
+
+
 PAIRS = [
     # ---- 状态徽标 / 状态牌（自己的 tint 叠在所在面上） ----
     Pair(".badge-status.running", "card", 9.1, 600, ".badge-status", "Tasks 状态徽标"),
@@ -293,6 +314,25 @@ NON_TEXT_COLOR_RULES = {
     ".err-icon .ico": "SVG 图标，图形对比度另立（L2-01 非文本项）",
 }
 
+#: 非文本图形边界（WCAG 1.4.11，3:1）。2026-11-09 补：审计只测了浅色文本，
+#: 这三项在深色同样不达标（--border-strong 深 2.07）。量的是 border 类属性
+#: 对元素自身底面的比率；`.dag-node` 的底面正是它自己铺的 --bg-accent。
+NON_TEXT_THRESHOLD = 3.0
+
+
+class NonTextPair(NamedTuple):
+    selector: str              # style.css 里的选择器
+    prop: str                  # border-color / border-left-color
+    surface: str               # SURFACES 的键（元素自己的 background 会叠上）
+    note: str
+
+
+NON_TEXT_PAIRS = [
+    NonTextPair(".theme-toggle", "border-color", "card", "主题切换钮边框（--border-strong）"),
+    NonTextPair(".dag-node", "border-color", "accent", "DAG 节点盒边界"),
+    NonTextPair(".dag-pending", "border-left-color", "accent", "pending 状态左边条"),
+]
+
 #: app.js 用内联样式给指标值上色（CSS-only 普查会漏掉这一族）。
 INLINE_PAIRS = [
     Pair(".metric-value", "raised_on_card", 16.8, 700, None, "指标值 ok"),
@@ -303,9 +343,16 @@ INLINE_STATUS_TOKENS = ("--status-ok", "--status-warn", "--status-error")
 
 
 def _evaluate(selector: str, surface: str, tokens: dict[str, str],
-              color_value: str | None = None) -> tuple[float, tuple, tuple]:
-    fg_value = color_value if color_value is not None else _prop(selector, "color")
-    assert fg_value, f"{selector} 没有 color 声明"
+              color_value: str | None = None,
+              prop: str = "color") -> tuple[float, tuple, tuple]:
+    fg_value: str | None
+    if color_value is not None:
+        fg_value = color_value
+    elif prop == "color":
+        fg_value = _prop(selector, "color")
+    else:
+        fg_value = _border_prop(selector, prop)
+    assert fg_value, f"{selector} 没有 {prop} 声明"
     fg = _rgb_value(fg_value, tokens)
     layers = [_rgb_value(tokens[name], tokens) for name in SURFACES[surface]]
     own = _prop(selector, "background-color", "background")
@@ -431,6 +478,25 @@ class TestContrast:
         failures = self._check("dark", DARK)
         assert not failures, "深色主题文本对比度不达标：\n" + "\n".join(failures)
 
+    def _check_non_text(self, theme: str, tokens: dict[str, str]) -> list[str]:
+        failures: list[str] = []
+        for pair in NON_TEXT_PAIRS:
+            ratio, fg, bg = _evaluate(pair.selector, pair.surface, tokens, prop=pair.prop)
+            if ratio < NON_TEXT_THRESHOLD:
+                failures.append(
+                    f"{pair.selector} {pair.prop}（{pair.note}）{ratio:.2f} < "
+                    f"{NON_TEXT_THRESHOLD}:1 fg={fg} bg={bg}"
+                )
+        return failures
+
+    def test_light_theme_non_text_boundaries_meet_3to_1(self):
+        failures = self._check_non_text("light", LIGHT)
+        assert not failures, "浅色（默认主题）非文本边界对比度不达标：\n" + "\n".join(failures)
+
+    def test_dark_theme_non_text_boundaries_meet_3to_1(self):
+        failures = self._check_non_text("dark", DARK)
+        assert not failures, "深色主题非文本边界对比度不达标：\n" + "\n".join(failures)
+
     def test_inline_metric_colors_meet_wcag_aa(self):
         """指标值的颜色写在 app.js 的内联样式里——CSS-only 普查看不见这一族。"""
         sites = re.findall(r"\.style\.color = 'var\(--status-' \+", APP_JS)
@@ -472,9 +538,11 @@ class TestCoverage:
         """反死判据：表里点了名却在 CSS 里不存在的选择器，说明表本身过期了。"""
         all_selectors = {selector for rule in RULES for selector in rule.selectors}
         missing = [pair.selector for pair in PAIRS if pair.selector not in all_selectors]
+        missing += [pair.selector for pair in NON_TEXT_PAIRS if pair.selector not in all_selectors]
         assert not missing, f"表里的选择器在 style.css 里不存在：{missing}"
 
     def test_pairs_are_unique(self):
         seen = [pair.selector for pair in PAIRS]
+        seen += [pair.selector for pair in NON_TEXT_PAIRS]
         duplicates = {name for name in seen if seen.count(name) > 1}
         assert not duplicates, f"同一个选择器登记了两次：{duplicates}"
