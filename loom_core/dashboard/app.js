@@ -125,6 +125,14 @@
     return svg;
   }
 
+  /* 表头单元格（F14）：`<th>` 必须带 `scope="col"`，屏幕阅读器才知道每格属于哪一列。
+     6 张表此前 thWithScope=0。 */
+  function thCell (text) {
+    const th = elt('th', null, text);
+    th.scope = 'col';
+    return th;
+  }
+
   function emptyState (iconId, msg) {
     const box = elt('div', 'empty-state');
     const wrap = elt('span', 'icon');
@@ -135,9 +143,12 @@
   }
 
   /* 键盘可达（评审 10-20 要求）：行/节点等"点击即操作"的元素要能 Tab 到、Enter/Space 触发。 */
-  function makeKeyboardActivatable (el, activate) {
+  /* `role` 可传 null（F14）：`<tr>` 本身是**隐式 row 语义**，再挂 `role="button"` 会把
+     "这是一行"整个抹掉（实测 4 行任务行如此）——行的可操作性由行内**真的是按钮**的元素
+     （ID 单元格，见 renderTasks）承担，行只保留"可聚焦 + Enter/Space 触发"。 */
+  function makeKeyboardActivatable (el, activate, role = 'button') {
     el.tabIndex = 0;
-    el.setAttribute('role', 'button');
+    if (role) el.setAttribute('role', role);
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -407,7 +418,7 @@
     const thead = elt('thead');
     const headRow = elt('tr');
     for (const h of ['ID', 'Pipeline', 'Status', 'Progress']) {
-      headRow.appendChild(elt('th', null, h));
+      headRow.appendChild(thCell(h));
     }
     thead.appendChild(headRow);
 
@@ -465,12 +476,12 @@
         tr.classList.add('expandable');
         tr.title = '点击展开实时进度';
         tr.addEventListener('click', () => toggleLiveStream(String(t.id)));
-        makeKeyboardActivatable(tr, () => toggleLiveStream(String(t.id)));
+        makeKeyboardActivatable(tr, () => toggleLiveStream(String(t.id)), null);
       } else {
         tr.classList.add('row-clickable');
         tr.title = '查看运行详情';
         tr.addEventListener('click', () => openRun(String(t.id)));
-        makeKeyboardActivatable(tr, () => openRun(String(t.id)));
+        makeKeyboardActivatable(tr, () => openRun(String(t.id)), null);
       }
       tbody.appendChild(tr);
       if (liveStreams.has(String(t.id))) {
@@ -1176,7 +1187,7 @@
     const thead = elt('thead');
     const headRow = elt('tr');
     for (const h of ['Time', 'Level', 'Agent', 'Message']) {
-      headRow.appendChild(elt('th', null, h));
+      headRow.appendChild(thCell(h));
     }
     thead.appendChild(headRow);
 
@@ -1505,7 +1516,7 @@
     const table = elt('table', 'tasks-table');
     const thead = elt('thead');
     const hr = elt('tr');
-    for (const h of ['运行', '流水线', '闸门', '等待', '操作']) hr.appendChild(elt('th', null, h));
+    for (const h of ['运行', '流水线', '闸门', '等待', '操作']) hr.appendChild(thCell(h));
     thead.appendChild(hr);
     const tbody = elt('tbody');
     for (const a of items) {
@@ -1611,13 +1622,17 @@
     const thead = elt('thead');
     const hr = elt('tr');
     for (const h of ['运行', '流水线', '状态', '完成', '交付物摘要', '节点 / 产物']) {
-      hr.appendChild(elt('th', null, h));
+      hr.appendChild(thCell(h));
     }
     thead.appendChild(hr);
     const tbody = elt('tbody');
     for (const item of items) {
       const tr = elt('tr', 'row-clickable');
       tr.onclick = () => openDelivery(String(item.run_id || ''));
+      // F7：账本行可点却**不可键盘达**——此前只有 onclick，没有 tabindex/键盘触发
+      //（讽刺的是 CSS 早为它写了 `.row-clickable:focus-visible` 焦点环，元素不可聚焦 ⇒ 那条规则永不生效）。
+      // 与任务行同口径：可聚焦 + Enter/Space；`role` 传 null（`<tr>` 保持隐式 row 语义，见 F14）。
+      makeKeyboardActivatable(tr, () => openDelivery(String(item.run_id || '')), null);
       tr.appendChild(elt('td', 'mono task-id-link', item.run_id || ''));
       tr.appendChild(elt('td', 'task-pipeline', item.pipeline || ''));
       tr.appendChild(elt('td', 'badge-status badge-' + (item.status || 'unknown'), item.status || ''));
@@ -1894,7 +1909,7 @@
         const table = elt('table', 'tasks-table');
         const thead = elt('thead');
         const hr = elt('tr');
-        for (const h of ['Pipeline', '锁文件', '锁状态', '问题']) hr.appendChild(elt('th', null, h));
+        for (const h of ['Pipeline', '锁文件', '锁状态', '问题']) hr.appendChild(thCell(h));
         thead.appendChild(hr);
         const tbody = elt('tbody');
         for (const e of pipelines) {
@@ -1945,7 +1960,7 @@
         const thead = elt('thead');
         const hr = elt('tr');
         for (const h of ['名称', 'Pipeline', 'cron', '启停', '上次触发', '下次触发', '租约'])
-          hr.appendChild(elt('th', null, h));
+          hr.appendChild(thCell(h));
         thead.appendChild(hr);
         const tbody = elt('tbody');
         for (const s of rows) {

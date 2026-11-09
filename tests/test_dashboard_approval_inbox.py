@@ -100,6 +100,9 @@ def test_inbox_does_not_reuse_the_error_overlay_retry_class():
         "剥离注释后取不到任何代码 —— 剥离器写坏了，本判据会变成恒真")
 
     css = STYLE_CSS.read_text(encoding="utf-8")
+    # 先剥注释再解析选择器：修复处刻意留了注释点名 `.retry-btn`（解释为什么不用它），
+    # 不剥的话"那段注释 + 后面的 :active 规则"会被当成一条选择器而误报（实测）。
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     selectors = [s.strip() for s in re.findall(r"([^{}]*)\{", css)]
     retry_rules = [s for s in selectors if ".retry-btn" in s]
     assert retry_rules, (
