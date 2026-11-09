@@ -1145,7 +1145,14 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3807 个测试本机全绿**（`3807 passed, 24 skipped, 6 deselected`，2026-11-08 按 +11 条
+**3814 个测试本机全绿**（`3814 passed, 24 skipped, 6 deselected`，2026-11-09 按 +7 条
+（批次二 L2「离线覆盖层」F5：整站离线时覆盖层标题是英文 `Dashboard Offline`、错误串是
+`All API endpoints unreachable` / `Unable to connect to the Loom API at …`，且 `renderError` 用
+`els.errorMsg.textContent = …` **整个替换**掉 `index.html` 里那句中文指引（含"加 --admin/--dashboard
+怎么起"）⇒ 实测 `hintInHtmlStillThere:false`：全站最关键的失败路径上"该怎么办"被抹掉。修法＝四处
+英文化中文（标题/离线错误串/兜底文案/Agents 空态）+ **指引常驻、错误详情另起节点挂它旁边**（复用
+`els.errorDetail`，不重复插入）。判据＝绑定敏感文本解析 7 条，含「不得给 `els.errorMsg.textContent`
+赋值」这条核心形态判据与两条前提复核）自 3807 同 skipped 集推为；同日 2026-11-08 按 +11 条
 （批次二 L2「实时流行」：**F3** running 行三个同源症状——① 流行只在 `renderTasks` 里插 ⇒ 点完要等
 下一轮 5s 轮询才可见；② `toggleLiveStream` 是开关且状态不可见 ⇒ "以为没点上"再点一次**静默关掉**
 （实测双击一次实时进度永远不出现）；③ ID 单元格 title 写「查看运行详情」却没有自己的处理器 ⇒
@@ -1254,8 +1261,8 @@ SKIPPED 集合未变）；
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
 再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3831 / 3837**（Windows 本机，三批共 +27 条后 `--co -q` 实测）/
-**3830 / 3836**（Linux CI = Windows − 1，机制见下；已有两次独立印证；三批共 +27 条按同一机制推），
+实际收集（选中 / 收集）：**3838 / 3844**（Windows 本机，四批共 +34 条后 `--co -q` 实测）/
+**3837 / 3843**（Linux CI = Windows − 1，机制见下；已有两次独立印证；四批共 +34 条按同一机制推），
 （2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
 两次独立实测都是 Linux 比 Windows **少 1 条**：
 ① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，
