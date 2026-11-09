@@ -634,9 +634,15 @@ class PipelineOrchestrator:
         for dag in task.dag_nodes.values():
             keys.update(str(k) for k in (dag.result or {}))
         try:
+            # 成本与质量的真值都不在引擎手里：成本在 `cost_log`（按 task_id 归集，
+            # 靠节点执行期的 cost_task_scope 归属），质量总分在 `quality_runs`
+            # （评分方写入）。这里只负责取回盖章；取不到按 0（见 run_metrics）。
+            from .run_metrics import collect_run_metrics
+            cost_usd, quality_score = collect_run_metrics(task.id)
             seq = store.close_run(task.id, status,
                                   finished_at=task.finished_at or None,
-                                  error=task.error or "", artifacts=sorted(keys))
+                                  error=task.error or "", artifacts=sorted(keys),
+                                  cost_usd=cost_usd, quality_score=quality_score)
         except Exception as e:  # noqa: BLE001
             self._log("warning", "RunStore 终态投影失败", task_id=task.id, error=str(e))
             return False

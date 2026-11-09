@@ -455,7 +455,21 @@ class DAGExecutor:
         return collect_artifacts(pairs)
 
     def execute_node_from_scheduler(self, task, node, input_file: str, plan) -> dict:
-        """由 run_plan 调度：基于 ExecutionNode 执行单个节点。"""
+        """由 run_plan 调度：基于 ExecutionNode 执行单个节点。
+
+        成本归属在这一层声明：`llm_router` 记成本时从 ContextVar 取 task_id，
+        而 ContextVar **不跨线程继承**——作用域必须设在真正执行节点的 worker
+        线程内部（process 模式的 `_execute_node_worker` 也经这条入口）。设在
+        提交点与执行点之间的空档上，工作线程里读到的仍是空串，
+        `cost_log.task_id` 就会一直为空、按运行汇总的成本恒为 0。
+        """
+        from .cost_tracker import cost_task_scope
+
+        with cost_task_scope(str(getattr(task, "id", "") or "")):
+            return self._execute_node_from_scheduler(task, node, input_file, plan)
+
+    def _execute_node_from_scheduler(self, task, node, input_file: str, plan) -> dict:
+        """节点执行本体（`execute_node_from_scheduler` 摘掉成本作用域后的实现）。"""
         from .registry import AgentStatus
 
         base_agent, pool_idx, pool_size = self._resolve_pool(node)

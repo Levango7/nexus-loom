@@ -59,6 +59,16 @@ class QualityFeedback:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_qh_dim ON quality_history(dimension)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_qh_weak ON quality_history(is_weak)")
+        # 每次评分一行的「总分」事实：`quality_history` 按维度拆行，**不存总分**，
+        # 而总分是 `runs.quality_score` 的唯一真值来源（加权重算不可能从维度还原：
+        # 总分还要减 style/citation 扣分，见 quality_gate）。单开一张表而不是塞一个
+        # `dimension='overall'` 的假维度——那会污染 get_weak_patterns 的维度统计。
+        conn.execute(  # nosec B608
+            "CREATE TABLE IF NOT EXISTS quality_runs "
+            "(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp REAL NOT NULL, "
+            "task_id TEXT NOT NULL, overall REAL NOT NULL, pipeline TEXT DEFAULT '')"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_qr_task ON quality_runs(task_id)")
 
     def _init_db(self):
         with self._pool.conn() as conn:
@@ -78,6 +88,29 @@ class QualityFeedback:
                     (now, task_id, dim, score, 1 if score < WEAK_THRESHOLD else 0,
                      sections_str, pipeline),
                 )
+
+    def record_overall(self, task_id: str, overall: float, pipeline: str = ""):
+        """记一次总分（每次评分一行；读取时取最新一行）。
+
+        不建唯一约束也不用 upsert：同一 task 可能因质量重做评分多次，
+        「最后一次」就是补写进 `runs.quality_score` 的那个值。
+        """
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO quality_runs (timestamp, task_id, overall, pipeline) "
+                "VALUES (?, ?, ?, ?)",
+                (time.time(), task_id, float(overall), pipeline),
+            )
+
+    def overall_for(self, task_id: str) -> float | None:
+        """该任务最近一次总分；从未评过分返回 None（**不是 0**——0 是合法分）。"""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT overall FROM quality_runs WHERE task_id = ? "
+                "ORDER BY timestamp DESC, id DESC LIMIT 1",
+                (task_id,),
+            ).fetchone()
+            return float(row[0]) if row is not None else None
 
     def get_weak_patterns(self, min_samples: int = 3) -> dict[str, dict]:
         """查询历史低分模式
@@ -150,6 +183,12 @@ class QualityFeedback:
                     "DELETE FROM quality_history WHERE timestamp < ?",
                     (now_ts - max_age_days * 86400,))
                 dropped = cur.rowcount
+                # 总分表同口径按龄清：它一行一次评分，不按 max_rows 裁——行数与
+                # 维度无关，混进 history 的行数上限会让保留策略变成两套口径。
+                cur = conn.execute(
+                    "DELETE FROM quality_runs WHERE timestamp < ?",
+                    (now_ts - max_age_days * 86400,))
+                dropped += cur.rowcount
             if max_rows > 0:
                 cur = conn.execute(
                     "DELETE FROM quality_history WHERE id NOT IN (SELECT id FROM "
@@ -177,6 +216,13 @@ def get_quality_feedback() -> QualityFeedback:
 
 
 def record_quality(task_id: str, scores: dict[str, float],
-                   section_types: list[str] = None, pipeline: str = ""):
-    """便捷函数"""
+                   section_types: list[str] = None, pipeline: str = "",
+                   overall: float | None = None):
+    """便捷函数。
+
+    `overall` 给了才记总分——总分只能由评分方算（要减 style/citation 扣分），
+    不该在这里用维度分重算一遍；不给就不写 `quality_runs`（读侧得到 None）。
+    """
     get_quality_feedback().record(task_id, scores, section_types, pipeline)
+    if overall is not None:
+        get_quality_feedback().record_overall(task_id, overall, pipeline)

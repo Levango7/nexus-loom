@@ -1145,7 +1145,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3834 个测试本机全绿**（`3834 passed, 24 skipped, 6 deselected`，2026-11-09 按 +8 条
+**3855 个测试本机全绿**（`3855 passed, 24 skipped, 6 deselected`，2026-11-09 按 +21 条
+（#120 L4-01 运行级指标盖章：成本归属 ContextVar 作用域 + `quality_runs` 总分表 +
+活路/补账两路 `close_run` 盖章；读侧改造：按调用时刻的规范路径短构造 store、读完即关、
+绝不碰进程级单例；判据文件 `tests/test_run_metrics_stamping.py`）自 3834 同 skipped 集推为；同日按 +8 条
 （批次二 L2「打磨批」：**F6** `.logs-table .log-msg` 注释声称"让 ellipsis 生效"却**没有**后三行
 （`white-space`/`overflow`/`text-overflow`）⇒ 长日志把卡片撑成横向滚动（实测 160 字符无空格消息
 `scrollW 1836 > clientW 1246`）；**F8** 卡头 `#badge-metrics` 是**永久占位符「▲」**（`els.badgeMetrics`
@@ -1286,8 +1289,8 @@ SKIPPED 集合未变）；
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
 再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3858 / 3864**（Windows 本机，八批共 +54 条后 `--co -q` 实测）/
-**3857 / 3863**（Linux CI = Windows − 1，机制见下；已有两次独立印证；八批共 +54 条按同一机制推），
+实际收集（选中 / 收集）：**3879 / 3885**（Windows 本机，八批共 +54 条后再 +21 条（盖章 +19、读侧改造 +2）`--co -q` 实测）/
+**3878 / 3884**（Linux CI = Windows − 1，机制见下；已有两次独立印证；按同一机制推），
 （2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
 两次独立实测都是 Linux 比 Windows **少 1 条**：
 ① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，

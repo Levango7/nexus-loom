@@ -129,11 +129,17 @@ class RunBackfill:
                                started_at=_float(rec.get("started_at")))
             if missing:
                 store.record_nodes(run_id, [self._node_row(n) for n in missing])
+            # 交付账本只存指纹，但成本与质量各有自己的持久化真值来源——补账
+            # 同样要把它们捞回来，否则"补过的运行"和"活路径收尾的运行"在
+            # `runs.cost_usd/quality_score` 上永远不是一个口径。
+            from .run_metrics import collect_run_metrics
+            cost_usd, quality_score = collect_run_metrics(run_id)
             seq = store.close_run(
                 run_id, status,
                 finished_at=_float(row.get("finished_at")) or _float(rec.get("finished_at")),
                 error=str(row.get("error") or rec.get("error") or ""),
-                artifacts=artifacts)
+                artifacts=artifacts,
+                cost_usd=cost_usd, quality_score=quality_score)
             result["closed"] = seq is not None
             store.record(run_id, _rs.RUN_REPLAYED, {
                 "source": "deliveries",
