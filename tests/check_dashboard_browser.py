@@ -130,6 +130,9 @@ CONTRAST_PROBE_JS = r"""
         <button class="btn-reject">驳回</button>
       </div>
       <div class="newtask-msg">已提交</div>
+      <div class="dag-node">plain</div>
+      <div class="dag-node dag-pending">pending</div>
+      <button class="theme-toggle">主题</button>
     </div>`;
   document.body.appendChild(host);
   try {
@@ -138,7 +141,7 @@ CONTRAST_PROBE_JS = r"""
       + ' .btn-approve, .btn-reject, .newtask-msg'));
     const submit = document.querySelector('#nt-submit');
     if (submit) targets.push(submit);
-    return targets.map((el) => {
+    const textReport = targets.map((el) => {
       const style = getComputedStyle(el);
       const fg = parse(style.color);
       const bg = backgroundOf(el);
@@ -151,6 +154,22 @@ CONTRAST_PROBE_JS = r"""
         need: large ? 3 : 4.5,
       };
     });
+    // 非文本边界（WCAG 1.4.11，3:1）：border 色对「元素自身底面 + 父面」双侧取小。
+    const borderReport = Array.from(host.querySelectorAll('.dag-node, .theme-toggle'))
+      .map((el) => {
+        const bs = getComputedStyle(el);
+        const isLeft = el.classList.contains('dag-pending');
+        const fg = parse(isLeft ? bs.borderLeftColor : bs.borderColor);
+        const own = backgroundOf(el);
+        const outside = backgroundOf(el.parentElement);
+        return {
+          selector: '.' + String(el.className).split(' ').join('.')
+            + ' [' + (isLeft ? 'border-left-color' : 'border-color') + ' 双侧取小]',
+          ratio: Math.min(ratio(fg, own), ratio(fg, outside)),
+          need: 3,
+        };
+      });
+    return textReport.concat(borderReport);
   } finally {
     host.remove();
   }
@@ -393,19 +412,19 @@ def check(browser, base: str) -> None:
         )
         assert not errors, errors
 
-        # 配色（L2-01/L2-02）：静态门禁实算的是"CSS 模型"，这里量的是浏览器真级联。
-        # 两层都过才说明"改对了"，而不是"改得符合我对 CSS 的想象"。
+        # 配色（L2-01/L2-02 + 非文本 3 项）：静态门禁实算的是"CSS 模型"，这里量的是
+        # 浏览器真级联。两层都过才说明"改对了"，而不是"改得符合我对 CSS 的想象"。
         for theme in ("light", "dark"):
             page.evaluate("(t) => document.documentElement.setAttribute('data-theme', t)", theme)
             report = page.evaluate(CONTRAST_PROBE_JS)
-            assert len(report) >= 15, f"{theme}: 探针只量到 {len(report)} 个元素，覆盖面缩水了"
+            assert len(report) >= 18, f"{theme}: 探针只量到 {len(report)} 个元素，覆盖面缩水了"
             bad = [item for item in report if item["ratio"] < item["need"]]
             assert not bad, f"{theme} 主题真浏览器实算不达标：{bad}"
         page.evaluate("() => document.documentElement.removeAttribute('data-theme')")
         report = page.evaluate(CONTRAST_PROBE_JS)
         bad = [item for item in report if item["ratio"] < item["need"]]
         assert not bad, f"默认（浅色）主题真浏览器实算不达标：{bad}"
-        print("PASS: light (default) and dark palettes meet WCAG AA in a real browser")
+        print("PASS: light (default) and dark palettes meet WCAG AA (text 4.5:1 / non-text 3:1) in a real browser")
     finally:
         page.close()
 

@@ -59,6 +59,21 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
+### Fixed（2026-11-09，L2 非文本图形对比度 3 项：WCAG 1.4.11 图形边界 3:1 双主题不达标）
+
+- **`.theme-toggle` 边框**（`--border-strong`）：浅色 `#bcc7da` 在 `--bg-card` 上只有 **1.70**、
+  深色 `#46536f` 只有 **2.07**——此前的 L2 审计只测了浅色文本，深色同样不达标是本次独立复算
+  才发现的。修法：浅 `#64748b`（on card **4.76**）/ 深 `#7c8aa5`（**4.58**）。
+- **`.dag-node` 盒边界 + `.dag-pending` 左边条**（`--border` 在 `--bg-accent` 上 **1.31**）：
+  两个声明改用 `--border-strong`；`--border` 本身不动（卡片/分隔线全片重描代价太大）。
+- 相邻图形边界全量实算无新增不达标：五条状态左边条（浅 6.03–8.49 / 深 5.60–8.53）、
+  `.dag-skipped`、`.approval-bar`、`#nt-submit` 实心填色、`.err-icon` 全部 ≥3:1；
+  `.run-back` / 输入框等其余 `--border` 消费点测了不修（超出点名范围，数值已登记板面）。
+- 判据：`tests/test_dashboard_contrast.py` 新增 `NON_TEXT_PAIRS`（border 类属性对元素自身
+  底面实算，双主题各 1 条，+2）；`tests/check_dashboard_browser.py` 探针加三元件
+  （自注入、border 色对自身底+父面双侧取小、need=3）。变异电池 **6/6**（4 条产品回退 +
+  阈值 3.0→1.0 假绿 + 删 `.dag-pending` 登记假绿），还原后 sha256 字节级一致。
+
 ## [3.17.0] - 2026-11-08
 
 ### Fixed（2026-11-08，L2 配色：默认浅色主题成片低于 WCAG AA + 旧色号硬编码；L2-01/L2-02）
