@@ -54,7 +54,7 @@
 </div>
 
 <!-- Token prompt (shown on 401 when API key auth is enabled) -->
-<div id="token-prompt" class="error-overlay" style="display:none" role="dialog" aria-label="API Token 输入">
+<div id="token-prompt" class="error-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="API Token 输入">
   <div class="err-icon"><svg class="ico ico-xl" aria-hidden="true"><use href="#i-key"/></svg></div>
   <h2>需要 API Token</h2>
   <p>Admin API 已启用鉴权（ADMIN_API_KEY）。输入 Token 后仅保存在本浏览器会话（sessionStorage，关闭标签页即失效）。</p>
@@ -115,7 +115,7 @@
           </label>
           <button id="nt-submit" type="submit">提交任务</button>
         </div>
-        <div id="nt-msg" class="newtask-msg" hidden></div>
+        <div id="nt-msg" class="newtask-msg" role="status" aria-live="polite" hidden></div>
       </form>
     </div>
   </div>

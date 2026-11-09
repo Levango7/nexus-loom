@@ -949,3 +949,27 @@ body {
   .run-detail-body { flex-direction: column; }
   .node-inspector { flex: 1 1 auto; max-width: none; }
 }
+
+/* --- 按下态（F15）--------------------------------------------
+   全站此前 `:active` 计数为 0：运行详情里最重的两个动作按钮（放行/驳回）连 hover 都没有，
+   点下去没有任何视觉变化 —— 用户无法确认"这一下点到了"。
+   这里给主操作补齐 hover/active；`transform` 只用 1px 位移，不做缩放（避免布局抖动）。 */
+.approval-actions button:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-reject:hover:not(:disabled) { background: var(--tint-error); }
+.retry-btn:active:not(:disabled),
+#nt-submit:active:not(:disabled),
+.approval-actions button:active:not(:disabled),
+.theme-toggle:active:not(:disabled),
+.task-id-link:active {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+/* --- 减弱动效（F17）-----------------------------------------
+   全站两处动效一直播：刷新指示点的 2s 无限脉冲、进度条宽度过渡。运维台是**常开**页面，
+   持续脉冲对前庭/注意力敏感用户不友好。信息不丢：点的可见性由颜色/位置保底，
+   "更新于 X"另有文字；进度条的百分比文字与宽度同时给出，去掉过渡不影响读数。 */
+@media (prefers-reduced-motion: reduce) {
+  .refresh-indicator { animation: none; }
+  .progress-fill { transition: none; }
+}
