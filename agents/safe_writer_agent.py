@@ -24,7 +24,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "2.0"
 AGENT_DESC = "安全写入 Agent - 备份+验证+原子替换+过期清理"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 99
 INPUT_TOPICS = ["writer.done", "layout.done", "safe_writer.write", "safe_writer.input", "safewriter.input"]
 OUTPUT_TOPICS = ["safe_writer.done", "safe_writer.failed"]

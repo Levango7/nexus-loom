@@ -37,7 +37,7 @@ from loom_core.conditions import validate as validate_condition
 AGENT_NAME = "transform"
 AGENT_VERSION = "1.0"
 AGENT_DESC = "通用数据转换 Agent（挑字段 / 过滤 / 渲染模板，不执行表达式）"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 50
 
 CONFIG_SCHEMA = {

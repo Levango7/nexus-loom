@@ -37,7 +37,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "1.0"
 AGENT_DESC = "知识库 Agent - 资料索引与向量检索（支持 PDF/图片经摄入层）"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 15
 INPUT_TOPICS = ["knowledge_base.input", "kb.index", "kb.search", "kb.input",
                 "ingest.done"]

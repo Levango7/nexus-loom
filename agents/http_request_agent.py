@@ -30,7 +30,7 @@ from loom_core.base_agent import BaseAgent, Message
 AGENT_NAME = "http_request"
 AGENT_VERSION = "1.0"
 AGENT_DESC = "通用 HTTP 请求 Agent（SSRF 校验默认开启，产物为 response）"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 50
 
 CONFIG_SCHEMA = {
