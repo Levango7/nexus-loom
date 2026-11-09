@@ -1,4 +1,4 @@
-"""doc-pipeline 性能基准测试 —— 量化各项优化收益。
+"""Loom 性能基准测试 —— 量化各项优化收益。
 
 运行方式:
     python benchmark.py              # 全部基准
@@ -651,7 +651,7 @@ HISTORY_PATH = Path(__file__).parent / "benchmark_history.jsonl"
 
 def main():
     print("=" * 70)
-    print("doc-pipeline 性能基准测试")
+    print("Loom 性能基准测试")
     mode_label = "CI" if CI_MODE else ("快速" if QUICK else "完整")
     print(f"模式: {mode_label} | 迭代: {ITERATIONS}x")
     if CI_MODE:
