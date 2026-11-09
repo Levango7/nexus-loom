@@ -362,6 +362,24 @@ class TestPlaceholderSectionFloor:
         assert "degradation.SECTION_PLACEHOLDER" in src, "writer 又自带字面量占位串了"
         assert degradation.SECTION_PLACEHOLDER not in src, "writer 里不该再留第二份字面量"
 
+    def test_keyless_refusal_is_placeholder_not_pass(self, gate):
+        """治本批（2026-11-10）：keyless 拒绝稿命中占位标记 → 底线判失败。
+
+        keyless 交拒绝自述=没有交付物，门禁必须红；否则"拒绝拼贴"会退化成
+        另一种静默绿（字数可能够、占比可能低，就靠这条标记兜住）。
+        """
+        import packs.docgen.agents.quality_gate as qg
+        from loom_doc import degradation
+        assert degradation.KEYLESS_REFUSAL in qg.PLACEHOLDER_MARKERS
+        agent, Message = gate
+        stub = (f"# T\n\n> 生成时间: x\n\n{degradation.KEYLESS_REFUSAL}"
+                "：已读取 3 篇素材，无法整合成文\n")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload={"content": stub, "task_id": "kr1",
+                                            "queries": ["Kafka"]}))
+        assert res["hard_floor"] is True, res.get("violations")
+        assert any("占位" in v for v in res["violations"]), res["violations"]
+
 
 # ─── 8. 抓取层中间格式不得当作成品交付 ────────────────────
 

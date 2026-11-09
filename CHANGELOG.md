@@ -59,6 +59,24 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
 
 ## [Unreleased]
 
+### Fixed（2026-11-10，T3 治本批：keyless writer 拒绝把 web 素材拼贴当交付物）
+
+- **writer 无 LLM Key 时不再出厂原文拼贴**：此前 `_fill_section` / `_generate_document`
+  把检索到的段落/摘要逐字拼进成品（`packs/docgen/agents/writer.py`），keyless 路径
+  （CI smoke、离线）无重构兜底，FP-1b 的 28.4 KB 样本即产自这条路径。现在两条 web
+  素材路径（文章 / 检索摘要）在无 Key 时改为交付 `degradation.KEYLESS_REFUSAL`
+  降级自述（标题 + 采集计数 + 配置指引），一个字的素材原文都不再进成品。
+- **新占位标记入门禁契约**：`loom_doc/degradation.py` 的 `KEYLESS_REFUSAL` 进
+  `PLACEHOLDER_MARKERS`——keyless 拒绝稿 = 没有交付物，质量门必须判红，否则
+  "拒绝拼贴"会退化成另一种静默绿。KB 路径抽取式草稿按其既有设计契约保留
+  （内容本就叫摘录，非抓取层原文），不在本批范围。
+- 判据：`test_writer.py` 三处旧契约断言按裁决改写（拒绝稿含标记、原文不进正文、
+  参考资料清单不再代替交付物），`test_fidelity_gate.py` 新增拒绝稿命中即红一条；
+  writer/kb/integration/p2 四套 156 条 + pack E2E 32 条全绿。
+- 边界如实写：有 Key 但 prompt 模板为空时 `_restructure_document` 仍返回 None，
+  回退拼贴未堵，留给第二批（引用可追溯）一并处置；`docs/product-spec.md` 的
+  FP-1b 遗留条已按此进度改写。
+
 ### Fixed（2026-11-10，设计锚点脚本重钉回绿）
 
 - `scripts/check_design_anchors.py`：origin/main 5bf6445（L4-01 run-metrics）+

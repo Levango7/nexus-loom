@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 
 from loom_core.base_agent import AgentMeta, Message
 from loom_core.streaming import StreamCallback
+from loom_doc import degradation
 from packs.docgen.agents.writer import ContentChunk, TemplateManager, WriterAgent, _md_escape
 
 
@@ -487,7 +488,10 @@ class TestHandle:
         w.pending_results["t5"] = (time.time(), results)
         res = w.handle(_msg({"task_id": "t5", "query": "PendT"}))
         assert res["status"] == "ok"
-        assert "PendT" in res["content"]
+        # 治本批（2026-11-10）：keyless 拒绝拼贴，只交降级自述，原文不得进正文
+        assert degradation.KEYLESS_REFUSAL in res["content"]
+        assert "PendS" not in res["content"]
+        assert res["stats"]["keyless_refused"] is True
         assert "t5" not in w.pending_results  # 消费后弹出
 
     def test_results_mode_generates_sections_and_stats(self, tmp_path):
@@ -504,7 +508,9 @@ class TestHandle:
         assert res["status"] == "ok"
         assert res["stats"]["total_results"] == 3
         assert res["stats"]["unique_chunks"] == 2  # 标题去重
-        assert "## 参考资料" in res["content"]
+        # 治本批（2026-11-10）：keyless 拒绝拼贴，参考资料清单不再代替交付物
+        assert degradation.KEYLESS_REFUSAL in res["content"]
+        assert "## 参考资料" not in res["content"]
 
     def test_results_mode_with_llm_restructure(self, tmp_path):
         w = _make_writer(tmp_path)
@@ -579,20 +585,19 @@ class TestBuildFromArticles:
              "local_path": str(tmp_path / "missing.txt"), "relevance": 0.05},
         ]
 
-    def test_build_without_llm_includes_degradation_notice(self, tmp_path):
+    def test_build_without_llm_refuses_raw_collage(self, tmp_path):
+        """治本批（2026-11-10）：keyless 拿到素材也不得拼贴交付，只交拒绝自述。"""
         w = _make_writer(tmp_path)
         articles = self._write_articles(tmp_path)
         res = w._build_from_articles(articles, "Kafka 架构", "Kafka 文档", "default", "t1")
         assert res["status"] == "ok"
         content = res["content"]
-        assert "# Kafka 文档" in content
-        assert "## 目录" in content
-        assert "## 参考资料" in content
-        assert "https://a1.com" in content
-        # 无 LLM 且存在空章节 → 降级声明
-        if res["stats"]["empty_sections"]:
-            assert "降级声明" in content
+        assert degradation.KEYLESS_REFUSAL in content
+        # 素材正文一个字都不得进成品（FP-1b 的源头形状）
+        assert "架构设计非常优秀" not in content
+        assert "## 参考资料" not in content
         assert res["stats"]["articles_used"] == 2  # 重复 URL + 缺失文件被剔除
+        assert res["stats"]["keyless_refused"] is True
 
     def test_build_with_llm_restructure(self, tmp_path):
         w = _make_writer(tmp_path)

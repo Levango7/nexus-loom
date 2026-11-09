@@ -716,6 +716,21 @@ class WriterAgent(BaseAgent):
         with self._pending_lock:
             self.pending_results.pop(task_id, None)
 
+        # 治本（2026-11-10）：检索摘要路径同理，无 Key 不拼贴。
+        if not self._llm_api_key:
+            content = self._keyless_refusal_content(
+                title, query, f"已检索 {len(results)} 条结果，无法整合成文")
+            self.log_warning(
+                f"任务 {task_id}: 无 LLM API Key，{len(results)} 条检索摘要"
+                "无法整合成文，拒绝输出原始拼贴，只交降级自述")
+            return {"status": "ok", "task_id": task_id, "content": content,
+                    "stats": {"total_results": len(results),
+                              "unique_chunks": len(chunks),
+                              "sections": len({c.section for c in chunks}),
+                              "word_count": len(content),
+                              "char_count": len(content),
+                              "keyless_refused": True}}
+
         # LLM 重构：即使只有搜索摘要，也用 LLM 生成完整技术文档
         if query and self._llm_api_key:
             # 将搜索摘要转为伪文章上下文
@@ -817,6 +832,21 @@ class WriterAgent(BaseAgent):
     # 新流程：文章 → 骨架 → TF-IDF 填充
     # ═══════════════════════════════════════════════
 
+    def _keyless_refusal_content(self, title: str, query: str,
+                                  material_note: str) -> str:
+        """无 LLM Key 时 web 素材路径的拒绝稿：只交自述，不交拼贴。
+
+        web 素材的"整合"本身就是 LLM 的活；keyless 拼贴=把检索原文当成品出厂，
+        正是 FP-1b 的源头。KB 抽取式草稿是另一条约（内容本就叫摘录），不在此列。
+        """
+        return (
+            f"# {title}\n\n"
+            f"> 生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            + (f"> 主题: {query}\n" if query else "")
+            + f"\n{degradation.KEYLESS_REFUSAL}：{material_note}\n"
+            "配置 LLM API Key（复制 .env.example 为 .env）后重新生成。\n"
+        )
+
     def _build_from_articles(self, articles: list[dict], query: str,
                               title: str, template_name: str,
                               task_id: str) -> dict:
@@ -853,6 +883,20 @@ class WriterAgent(BaseAgent):
                     continue
 
         self.log_info(f"  成功读取 {len(article_contents)}/{len(articles)} 篇文章")
+
+        # 治本（2026-11-10）：无 Key 时 web 素材拼贴=把检索原文当成品出厂
+        # （FP-1b 的源头），宁可不交；KB 抽取式草稿是另一条约，不在此列。
+        if not self._llm_api_key and article_contents:
+            content = self._keyless_refusal_content(
+                title, query, f"已读取 {len(article_contents)} 篇素材，无法整合成文")
+            self.log_warning(
+                f"任务 {task_id}: 无 LLM API Key，{len(article_contents)} 篇素材"
+                "无法整合成文，拒绝输出原始拼贴，只交降级自述")
+            return {"status": "ok", "task_id": task_id, "content": content,
+                    "stats": {"articles_used": len(article_contents), "sections": 0,
+                              "word_count": len(content),
+                              "char_count": len(content),
+                              "empty_sections": [], "keyless_refused": True}}
 
         # Step 2: 创建文档骨架
         skeleton = self._plan_skeleton(query, title, article_contents)
