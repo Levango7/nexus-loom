@@ -96,7 +96,8 @@ EXTERNAL: dict[str, str] = {
 #: config.py 的跨进程文件锁用它做 flock，Windows 侧走 O_EXCL 自旋回退，
 #: 不依赖任何第三方包，故登记在此而不是 EXTERNAL（EXTERNAL 是第三方件）。
 STDLIB_EXTRA = frozenset({
-    "atexit", "fcntl", "ipaddress", "socketserver", "struct", "tomllib", "zlib",
+    "atexit", "contextvars", "fcntl", "ipaddress", "socketserver", "struct",
+    "tomllib", "zlib",
 })
 
 

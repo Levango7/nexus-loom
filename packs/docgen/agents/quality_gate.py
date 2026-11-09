@@ -426,7 +426,7 @@ class QualityGateAgent(BaseAgent):
         with contextlib.suppress(Exception):
             from loom_core.quality_feedback import record_quality
             record_quality(task_id=task_id, scores={k: round(v, 1) for k, v in scores.items()},
-                           pipeline=cfg.profile_name)
+                           pipeline=cfg.profile_name, overall=round(overall, 1))
 
         with contextlib.suppress(Exception):
             from loom_core.event_hook import emit_event

@@ -390,7 +390,7 @@ class LLMRouter:
                 logger.debug(f"LLM 调用成功: {provider.name}")
 
                 try:
-                    from .cost_tracker import get_cost_tracker
+                    from .cost_tracker import current_cost_task_id, get_cost_tracker
                     pt = usage.get("prompt_tokens")
                     ct = usage.get("completion_tokens")
                     if isinstance(pt, int) and isinstance(ct, int):
@@ -399,6 +399,7 @@ class LLMRouter:
                             prompt_tokens=pt,
                             completion_tokens=ct,
                             model=provider.model,
+                            task_id=current_cost_task_id(),
                         )
                     else:
                         get_cost_tracker().record_call(
@@ -406,6 +407,7 @@ class LLMRouter:
                             messages=messages,
                             response=content,
                             model=provider.model,
+                            task_id=current_cost_task_id(),
                         )
                 except Exception as e:
                     # 记录成本失败不应影响主流程，但需留痕便于排查（避免 silent pass 吞掉 DB 损坏等关键错误）
@@ -467,7 +469,7 @@ class LLMRouter:
                 logger.debug(f"LLM 异步调用成功: {provider.name}")
 
                 try:
-                    from .cost_tracker import get_cost_tracker
+                    from .cost_tracker import current_cost_task_id, get_cost_tracker
                     pt = usage.get("prompt_tokens")
                     ct = usage.get("completion_tokens")
                     if isinstance(pt, int) and isinstance(ct, int):
@@ -476,6 +478,7 @@ class LLMRouter:
                             prompt_tokens=pt,
                             completion_tokens=ct,
                             model=provider.model,
+                            task_id=current_cost_task_id(),
                         )
                     else:
                         get_cost_tracker().record_call(
@@ -483,6 +486,7 @@ class LLMRouter:
                             messages=messages,
                             response=content,
                             model=provider.model,
+                            task_id=current_cost_task_id(),
                         )
                 except Exception as e:
                     logger.warning(f"记录成本失败（不影响主流程）: {e}")

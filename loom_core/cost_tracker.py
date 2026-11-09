@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import logging
 import threading
 import time
@@ -60,6 +61,31 @@ PRICING = {
     "default": (0.001, 0.002),           # 无前缀通用供应商兜底，与 DEFAULT_PRICE 一致
 }
 DEFAULT_PRICE = (0.001, 0.002)  # 未知供应商默认定价
+
+
+# ── 成本归属：节点执行期把 task_id 传播到每次 LLM 记录 ──────────────
+# 归属不能靠"调用方记得传"：`llm_router.chat()` 的调用点散在 agents/ 与 packs/ 里
+# （writer / fact_checker / requirements_analyzer …），逐个补参数既会漏也污染签名。
+# 这里用 ContextVar 让**引擎在节点执行期**声明作用域，router 记录时自己带上。
+# 边界：ContextVar 不跨线程自动继承，所以作用域必须设在真正干活的那个线程里
+# （`DAGExecutor.execute_node_from_scheduler` 的入口，process 模式的 worker 同样经过它）。
+_cost_task_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "loom_cost_task_id", default="")
+
+
+def current_cost_task_id() -> str:
+    """当前节点执行期声明的 task_id；不在作用域内时为空串。"""
+    return _cost_task_id.get()
+
+
+@contextlib.contextmanager
+def cost_task_scope(task_id: str) -> Iterator[None]:
+    """在 with 块内把成本记到 task_id 名下（嵌套按栈恢复，异常也恢复）。"""
+    token = _cost_task_id.set(str(task_id or ""))
+    try:
+        yield
+    finally:
+        _cost_task_id.reset(token)
 
 
 def estimate_tokens(text: str) -> int:
