@@ -1145,7 +1145,7 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3823 个测试本机全绿**（`3823 passed, 24 skipped, 6 deselected`，2026-11-09 按 +9 条
+**3825 个测试本机全绿**（`3825 passed, 24 skipped, 6 deselected`，2026-11-09 按 +9 条
 （批次二 L2「可达性与动效」：**F7** 交付账本行可点却**不可键盘达**（只有 onclick，无 tabindex/键盘触发
 ——而 CSS 早写了 `.row-clickable:focus-visible` 焦点环，元素不可聚焦时那条规则永不生效）；
 **F14 结构性四项**：`<tr>` 上挂 `role="button"` 会把隐式 row 语义抹掉 ⇒ 行级激活改传 `role=null`
@@ -1154,8 +1154,11 @@ python -m pytest tests/ -v
 **F15** 全站 `:active` 计数原为 **0** ⇒ 主操作补 hover/active（审批放行/驳回此前连 hover 都没有）；
 **F17** 补 `@media (prefers-reduced-motion: reduce)`（刷新指示点 2s 无限脉冲 + 进度条宽度过渡，
 运维台常开、影响被放大）。判据＝绑定敏感文本解析 9 条，含「每个行级调用都必须传 role=null」的计数
-等式与两条前提复核）自 3814 同 skipped 集推为；同日 2026-11-09 按 +7 条
-（批次二 L2「离线覆盖层」F5：整站离线时覆盖层标题是英文 `Dashboard Offline`、错误串是
+等式与两条前提复核）自 3816 同 skipped 集推为；同日 2026-11-09 按 +2 条
+（L2 非文本对比度 3 项：`.theme-toggle` 边框 / `.dag-node` 盒边界 / `.dag-pending` 左边条
+浅深两主题实算都低于 WCAG 1.4.11 的 3:1，深色 2.07/1.37 是本次复算新发现、一并修；
+判据＝静态门 `NON_TEXT_PAIRS` 双主题 2 条 + 浏览器门探针三元件双侧取小）自 3814 同
+skipped 集推为；同日按 +7 条（批次二 L2「离线覆盖层」F5：整站离线时覆盖层标题是英文 `Dashboard Offline`、错误串是
 `All API endpoints unreachable` / `Unable to connect to the Loom API at …`，且 `renderError` 用
 `els.errorMsg.textContent = …` **整个替换**掉 `index.html` 里那句中文指引（含"加 --admin/--dashboard
 怎么起"）⇒ 实测 `hintInHtmlStillThere:false`：全站最关键的失败路径上"该怎么办"被抹掉。修法＝四处
@@ -1270,8 +1273,8 @@ SKIPPED 集合未变）；
 3688 passed、24 skipped、6 deselected，0 failed / 0 xfailed，1308.73s；
 口径 Windows / `Python 3.14.3` / 串行无 `-n` / `LOOM_TEST_PG_URL` 未设。
 再并入批次一（#107–#110，+77 条）与 #111（+5 条）后声明的 3770 是同一口径的递推值。）
-实际收集（选中 / 收集）：**3847 / 3853**（Windows 本机，五批共 +43 条后 `--co -q` 实测）/
-**3846 / 3852**（Linux CI = Windows − 1，机制见下；已有两次独立印证；五批共 +43 条按同一机制推），
+实际收集（选中 / 收集）：**3849 / 3855**（Windows 本机，六批共 +45 条后 `--co -q` 实测）/
+**3848 / 3854**（Linux CI = Windows − 1，机制见下；已有两次独立印证；六批共 +45 条按同一机制推），
 （2026-11-07 订正：原文写「Linux **3802**，多 8 条为 POSIX-only 用例」，**机制不成立**。
 两次独立实测都是 Linux 比 Windows **少 1 条**：
 ① 在 `e557a3c` 上 CI run `42261174587` 四条腿（Python 3.11.18 / 3.12.16 / 3.13.18 / 3.14.10，

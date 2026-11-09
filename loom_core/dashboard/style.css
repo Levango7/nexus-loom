@@ -22,7 +22,9 @@
   --highlight: #4f46e5;        /* 主强调：靛蓝 */
   --highlight-soft: #818cf8;
   --border: #d3dae7;           /* 边框加深：卡界与底布分明 */
-  --border-strong: #bcc7da;
+  /* 2026-11-09 非文本边界压到 WCAG 1.4.11 3:1：旧 #bcc7da 在 --bg-card 上只有 1.70。
+     全仓唯一消费点是 .theme-toggle 边框；--border 不动（卡片/分隔线全片重描代价太大）。 */
+  --border-strong: #64748b;
   --border-soft: rgba(16, 24, 40, 0.09);
   --surface-raised: rgba(16, 24, 40, 0.05);
 
@@ -64,7 +66,8 @@
   --highlight: #8b93ff;
   --highlight-soft: #a5b4fc;
   --border: #33405a;
-  --border-strong: #46536f;
+  /* 2026-11-09 同上：旧 #46536f 在 --bg-card 上 2.07，也不到 3:1（审计只测了浅色）。 */
+  --border-strong: #7c8aa5;
   --border-soft: rgba(255, 255, 255, 0.09);
   --surface-raised: rgba(255, 255, 255, 0.07);
 
@@ -812,7 +815,8 @@ body {
 }
 .dag-node {
   min-width: 150px; max-width: 260px; flex: 0 1 auto;
-  border: 1px solid var(--border); border-left-width: 3px;
+  /* 2026-11-09 盒边界用 --border-strong：--border 在 --bg-accent 上只有 1.31（WCAG 1.4.11 图形 3:1） */
+  border: 1px solid var(--border-strong); border-left-width: 3px;
   border-radius: var(--radius); padding: 8px 10px;
   background: var(--bg-accent);
 }
@@ -829,7 +833,7 @@ body {
 .dag-skipped { border-left-color: var(--text-muted); opacity: 0.75; }
 .dag-retried { border-left-color: var(--status-warn); }
 .dag-running { border-left-color: var(--status-info); }
-.dag-pending { border-left-color: var(--border); }
+.dag-pending { border-left-color: var(--border-strong); }
 
 /* when 条件跳过 = 作者声明的可选分支 → 虚线边框（spec §4.2 S2 原文） */
 .dag-skip-condition { border-style: dashed; opacity: 0.9; }
