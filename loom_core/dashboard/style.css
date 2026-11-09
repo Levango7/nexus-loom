@@ -960,7 +960,8 @@ body {
    这里给主操作补齐 hover/active；`transform` 只用 1px 位移，不做缩放（避免布局抖动）。 */
 .approval-actions button:hover:not(:disabled) { filter: brightness(1.08); }
 .btn-reject:hover:not(:disabled) { background: var(--tint-error); }
-.retry-btn:active:not(:disabled),
+/* 注意：`.retry-btn` **故意不在**这个列表里 —— 它是 error-overlay 作用域内的重试按钮（F2 的
+   根因就是"收件箱误用了它而零命中"），再给它加全局 :active 会把那条判据的"作用域限定"前提击穿。 */
 #nt-submit:active:not(:disabled),
 .approval-actions button:active:not(:disabled),
 .theme-toggle:active:not(:disabled),
