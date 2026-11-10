@@ -30,7 +30,7 @@ from .executor_factory import create_executor, shutdown_executor
 from .naming import agent_of, family_of
 from .observability import get_logger, get_metrics
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .backfill import RunBackfill
     from .registry import AgentMeta
     from .scheduler import ExecutionNode, ExecutionPlan

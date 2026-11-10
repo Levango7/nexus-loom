@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -32,6 +32,38 @@ def _plan(name="demo"):
     return SimpleNamespace(pipeline_name=name, plan_id="plan-" + name,
                            levels=[], node_count=0, raw={"pipeline": {}},
                            checkpoint={})
+
+
+def _real_plan(name="demo", levels=None, raw=None):
+    from loom_core.scheduler import ExecutionPlan
+
+    lv = levels if levels is not None else [[]]
+    return ExecutionPlan(plan_id="plan-" + name, pipeline_name=name,
+                         levels=lv, node_count=sum(len(x) for x in lv),
+                         raw=raw if raw is not None else {"pipeline": {}})
+
+
+def _node(name):
+    from loom_core.scheduler import AgentConfig, ExecutionNode
+
+    return ExecutionNode(agent_name=name, agent_config=AgentConfig(),
+                         dependencies=[])
+
+
+def _prep_async(orch):
+    """async 执行循环公共 mocks：闸门/暂停/结算 identity，收尾全 Mock。"""
+    orch.bus = MagicMock()
+    orch._executor = MagicMock()
+    orch._executor.execute_level_async = AsyncMock(return_value=True)
+    orch._arm_approval_gate = MagicMock(side_effect=lambda t, p, lv: lv)
+    orch._settle_approval_gate = MagicMock(side_effect=lambda t, p, lv: lv)
+    orch._pause_boundary_snapshot = MagicMock()
+    orch._observe_external_decision = MagicMock(return_value="waiting")
+    orch._runstore_open = MagicMock()
+    orch._runstore_nodes = MagicMock()
+    orch._save_checkpoint = MagicMock()
+    orch._merge_pooled_results = MagicMock()
+    orch._finalize_plan_task_async = MagicMock()
 
 
 class TestRunStoreDegrade:
@@ -1456,3 +1488,236 @@ class TestCallbacksAndAuditLog:
         lockless = SimpleNamespace(id="t1")
         assert orch._executor._checkpoint_save(lockless) == "saved"
         orch._checkpoint.save.assert_called_once_with(lockless)
+
+
+class TestPipelineTailArms:
+    """C-22b：覆盖报告 Missing 清单逐臂钉死（reject/_consume/入口/async 循环/交付）。"""
+
+    def _reject_task(self):
+        t = _mk_task(status=TaskStatus.PAUSED)
+        t.awaiting_approval = {"nodes": ["gate"], "messages": {}, "pipeline": "p"}
+        return t
+
+    # ── reject 四臂（898/912-914/915-916/920）──
+
+    def test_reject_store_ledger_unavailable_fail_closed(self, orch, monkeypatch):
+        import loom_core.pipeline as pl
+
+        task = self._reject_task()
+        orch._running_tasks = {"t1": task}
+        orch.approvals.pending_for_run.return_value = {"request_id": "r"}
+        orch.approvals.decide_recorded.return_value = None
+        monkeypatch.setattr("loom_core.audit.write_audit", MagicMock())
+        monkeypatch.setattr(pl, "emit_event", MagicMock())
+
+        ok, err = orch.reject("t1", "原因", "by")
+
+        assert ok is False
+        assert "台账不可用" in err
+        assert task.status == TaskStatus.PAUSED
+
+    def test_reject_unknown_task(self, orch, monkeypatch):
+        import loom_core.pipeline as pl
+
+        orch._running_tasks = {}
+        orch.approvals.pending_for_run.return_value = None
+        orch.task_queue.get.return_value = None
+        monkeypatch.setattr("loom_core.audit.write_audit", MagicMock())
+        monkeypatch.setattr(pl, "emit_event", MagicMock())
+
+        ok, err = orch.reject("ghost")
+
+        assert ok is False
+        assert err == "task not found: ghost"
+
+    def test_reject_queued_row_not_awaiting(self, orch, monkeypatch):
+        import loom_core.pipeline as pl
+
+        orch._running_tasks = {}
+        orch.approvals.pending_for_run.return_value = None
+        orch.task_queue.get.return_value = {"status": "done"}
+        monkeypatch.setattr("loom_core.audit.write_audit", MagicMock())
+        monkeypatch.setattr(pl, "emit_event", MagicMock())
+
+        ok, err = orch.reject("t1")
+
+        assert ok is False
+        assert "未在审批等待中" in err
+        assert "status=done" in err
+
+    def test_reject_ledger_decision_already_taken(self, orch, monkeypatch):
+        import loom_core.pipeline as pl
+
+        orch._running_tasks = {}
+        orch.approvals.pending_for_run.return_value = {"request_id": "r"}
+        orch.approvals.decide_recorded.return_value = None
+        monkeypatch.setattr("loom_core.audit.write_audit", MagicMock())
+        monkeypatch.setattr(pl, "emit_event", MagicMock())
+
+        ok, err = orch.reject("t1", "原因", "by")
+
+        assert ok is False
+        assert "决定已被处理" in err
+
+    # ── _consume_open_decision 两臂（1091-1094/1099-1100）──
+
+    def test_consume_open_decision_read_failure(self, orch):
+        task = _mk_task()
+        task.approvals = []
+        orch.approvals.open_decision.side_effect = RuntimeError("store down")
+
+        assert orch._consume_open_decision(task) is None
+        assert any(lv == "warning" and "审批台账读取失败" in m
+                   for lv, m in _levels(orch))
+
+    def test_consume_open_decision_mark_failure_keeps_decision(self, orch):
+        task = _mk_task()
+        task.approvals = []
+        orch.approvals.open_decision.return_value = {
+            "request_id": "r", "nodes": ["gate"], "status": "approved",
+            "note": "", "reason": "", "decided_at": 1.0, "decided_by": "u"}
+        orch.approvals.consume.side_effect = RuntimeError("consume down")
+
+        decision = orch._consume_open_decision(task)
+
+        assert decision is not None
+        assert decision["request_id"] == "r"
+        assert len(task.approvals) == 1
+        assert any(lv == "warning" and "审批决定消费标记写入失败" in m
+                   for lv, m in _levels(orch))
+
+    # ── 入口 claim_direct 两臂（1467-1468/1585-1586）──
+
+    def test_run_plan_claim_direct_failure_warns(self, orch, monkeypatch):
+        import loom_core.pipeline as pl
+
+        plan = _real_plan()
+        orch.task_queue.claim_direct.side_effect = RuntimeError("queue down")
+        orch._runstore_open = MagicMock()
+        orch._execute_plan = MagicMock()
+        orch._finalize_plan_task = MagicMock()
+        orch.bus = MagicMock()
+        monkeypatch.setattr(pl, "emit_event", MagicMock())
+
+        task = orch.run_plan(plan, wait=True)
+
+        assert any(lv == "warning" and "队列行占位失败" in m
+                   for lv, m in _levels(orch))
+        orch._execute_plan.assert_called_once()
+        assert task.status == TaskStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_run_plan_async_claim_direct_failure_warns(self, orch, monkeypatch):
+        import loom_core.pipeline as pl
+
+        plan = _real_plan(levels=[[_node("a")]])
+        orch.task_queue.claim_direct.side_effect = RuntimeError("queue down")
+        _prep_async(orch)
+        monkeypatch.setattr(pl, "emit_event", MagicMock())
+
+        task = await orch.run_plan_async(plan)
+
+        assert any(lv == "warning" and "队列行占位失败" in m
+                   for lv, m in _levels(orch))
+        orch.task_queue.claim_direct.assert_called_once()
+        assert task.status == TaskStatus.DONE
+
+    # ── async 执行循环五臂（1614-1615/1628-1629/1661/1674/1688-1690）──
+
+    @pytest.mark.asyncio
+    async def test_async_stop_event_cancels_before_execute(self, orch, monkeypatch):
+        plan = _real_plan(levels=[[_node("a")]])
+        _prep_async(orch)
+        monkeypatch.setattr("loom_core.pipeline.emit_event", MagicMock())
+        orch._stop_event.set()
+
+        task = await orch.run_plan_async(plan)
+
+        assert task.status == TaskStatus.CANCELLED
+        orch._executor.execute_level_async.assert_not_awaited()
+        orch._finalize_plan_task_async.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_pause_boundary_stop_cancels(self, orch, monkeypatch):
+        plan = _real_plan(levels=[[_node("a")]])
+        _prep_async(orch)
+        monkeypatch.setattr("loom_core.pipeline.emit_event", MagicMock())
+
+        def arm_pause(t, p, lv):
+            t.status = TaskStatus.PAUSED
+            t.stop_event.set()
+            return lv
+
+        orch._arm_approval_gate = MagicMock(side_effect=arm_pause)
+        task = await orch.run_plan_async(plan)
+
+        assert task.status == TaskStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_async_execute_false_breaks_zero_step(self, orch, monkeypatch):
+        plan = _real_plan(levels=[[_node("a")]])
+        _prep_async(orch)
+        monkeypatch.setattr("loom_core.pipeline.emit_event", MagicMock())
+        orch._executor.execute_level_async = AsyncMock(return_value=False)
+
+        task = await orch.run_plan_async(plan)
+
+        assert task.status == TaskStatus.DONE
+        assert task.current_step == 0
+
+    @pytest.mark.asyncio
+    async def test_async_failed_level_marks_failed(self, orch, monkeypatch):
+        plan = _real_plan(levels=[[_node("a")]])
+        _prep_async(orch)
+        monkeypatch.setattr("loom_core.pipeline.emit_event", MagicMock())
+
+        def fail_level(t, lv, inp, p):
+            t.status = TaskStatus.FAILED
+            return True
+
+        orch._executor.execute_level_async = AsyncMock(side_effect=fail_level)
+        task = await orch.run_plan_async(plan)
+
+        assert task.status == TaskStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_async_arm_gate_raise_marks_failed(self, orch, monkeypatch):
+        plan = _real_plan(levels=[[_node("a")]])
+        _prep_async(orch)
+        monkeypatch.setattr("loom_core.pipeline.emit_event", MagicMock())
+        orch._arm_approval_gate = MagicMock(side_effect=RuntimeError("arm boom"))
+
+        task = await orch.run_plan_async(plan)
+
+        assert task.status == TaskStatus.FAILED
+        assert "arm boom" in task.error
+
+    # ── 交付两臂（1756-1757/1843-1844）──
+
+    def test_delivery_record_sha256_oserror_is_empty(self, orch, tmp_path, monkeypatch):
+        out = tmp_path / "out.md"
+        out.write_text("hello", encoding="utf-8")
+        task = _mk_task(status=TaskStatus.DONE)
+        task.output_path = str(out)
+        monkeypatch.setattr("pathlib.Path.read_bytes",
+                            MagicMock(side_effect=OSError("disk")))
+
+        rec = orch._build_delivery_record(task, _real_plan())
+
+        assert rec["output_sha256"] == ""
+
+    def test_deliver_site_build_failure_warns(self, orch, tmp_path, monkeypatch):
+        import loom_core.deliveries as dv
+        import loom_core.html_export as he
+
+        task = _mk_task(status=TaskStatus.DONE)
+        task.output_content = "# 产物"
+        plan = _real_plan(raw={"pipeline": {"deliver": {"site": str(tmp_path / "site")}}})
+        orch._build_delivery_record = MagicMock(return_value={"run_id": "t1"})
+        monkeypatch.setattr(dv, "DeliveryLedger", MagicMock())
+        monkeypatch.setattr(he, "build_site", MagicMock(side_effect=RuntimeError("site boom")))
+
+        orch._deliver(task, plan)
+
+        assert any(lv == "warning" and "交付站点构建失败" in m
+                   for lv, m in _levels(orch))
