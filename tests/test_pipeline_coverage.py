@@ -1721,3 +1721,16 @@ class TestPipelineTailArms:
 
         assert any(lv == "warning" and "交付站点构建失败" in m
                    for lv, m in _levels(orch))
+
+    # ── 同步执行失败臂（1495-1497）──
+
+    def test_sync_execute_plan_raise_marks_failed(self, orch, monkeypatch):
+        plan = _real_plan(levels=[[_node("a")]])
+        orch.bus = MagicMock()
+        orch._execute_plan = MagicMock(side_effect=RuntimeError("sync boom"))
+        monkeypatch.setattr("loom_core.pipeline.emit_event", MagicMock())
+
+        task = orch.run_plan(plan)
+
+        assert task.status == TaskStatus.FAILED
+        assert "sync boom" in task.error
