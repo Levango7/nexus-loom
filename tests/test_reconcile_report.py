@@ -121,10 +121,22 @@ def _report(state_dir, **kw):
 def _snapshot(state_dir):
     """库内容的全量指纹：逐表全量 dump + 文件清单/大小 + 主库字节哈希。
 
+    WAL 物理口径归一：取指纹前对两库各做一次 PRAGMA wal_checkpoint(TRUNCATE)。
+    WAL 落盘时机属 SQLite 物理层（最后连接关闭会自发 checkpoint），与本报告
+    「是否写业务数据」无关；CI 实测踩过——未归一时 before 取到「数据全在
+    -wal、主库空壳」、after 取到「checkpoint 已并入」，字节级误报红。
+    before/after 对称执行同一归一，主库字节哈希才有可比性。
     -wal/-shm 是 SQLite 自己的中间态文件，内容字节不可复现，只记名与大小；
     主库 .db 的字节哈希 + 全表 dump 双通道，任何逻辑写都无处遁形。
     SQL 全字面量（表名写死），不拼标识符。
     """
+    for name in ("tasks.db", "runs.db"):
+        conn = sqlite3.connect(state_dir / name)
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.commit()
+        finally:
+            conn.close()
     files = {}
     for p in sorted(state_dir.rglob("*")):
         if p.is_file():
