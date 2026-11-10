@@ -1145,7 +1145,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3865 个测试本机全绿**（`3865 passed, 24 skipped, 6 deselected`，2026-11-10 按 +4 条
+**3881 个测试本机全绿**（`3881 passed, 24 skipped, 6 deselected`，2026-11-10 按 +16 条
+（C-22b 编排器尾部臂钉死：异步空层结算/执行器假/stop_event/占位警告/台账拒收守卫/
+checkpoint OSError/交付站警告 15 臂 + 同步执行失败臂；`TYPE_CHECKING` 加 no-cover pragma；
+16 钉杀 11 变异；判据文件 `tests/test_pipeline_coverage.py`）自 3865 同 skipped 集推为；2026-11-10 按 +4 条
 （C-21 worker 空转超时确定性：假时钟+`sleep_fn` 注入，4 钉杀 5 变异；判据文件
 `tests/test_worker_idle_timeout.py`）自 3861 同 skipped 集推为；2026-11-10 按 +6 条
 （L4-02 GC 跨库口径：`close_run` 同事务结清待批 + max_runs 双判据接满 cost/quality
