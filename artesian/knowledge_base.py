@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from . import embeddings as _emb
+from .sqlite_util import enable_wal
 
 DEFAULT_DB = "knowledge_base.db"
 # 单块目标长度（字符）。过短则上下文不足，过长则检索精度下降
@@ -144,7 +145,12 @@ class KnowledgeBase:
                 self.db_path, timeout=10, check_same_thread=False,
                 factory=_TrackableConnection,
             )
-            conn.execute("PRAGMA journal_mode=WAL")
+            # WAL 切换需短暂独占锁、不走 busy handler：两进程首建同库时裸
+            # PRAGMA 会直接 SQLITE_BUSY（与 timeout 无关）。走带退避重试的
+            # enable_wal（与 db_backend 同款口径）；实现已下沉到本层
+            # artesian/sqlite_util（分层门禁禁底座反向依赖主仓包），
+            # 故此处顶层相对 import，无环。
+            enable_wal(conn)
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA busy_timeout=5000")
             self._local.conn = conn
