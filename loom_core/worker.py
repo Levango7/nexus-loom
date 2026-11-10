@@ -217,7 +217,7 @@ class TaskWorker:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="doc-pipeline 常驻 worker（消费任务队列）")
+    ap = argparse.ArgumentParser(description="Loom 常驻 worker（消费任务队列）")
     ap.add_argument("--worker-id", default="", help="写进队列 worker_id 列，默认 pidN")
     ap.add_argument("--once", action="store_true", help="只消费一条任务后退出")
     ap.add_argument("--poll-interval", type=float, default=DEFAULT_POLL_INTERVAL)

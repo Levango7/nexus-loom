@@ -139,7 +139,7 @@ class ConfigCenter:
 
     def __init__(self, config_file: str = None, auto_reload: bool = True):
         """
-        config_file: 主配置文件路径（YAML/JSON），默认查找 doc-pipeline/config.yaml
+        config_file: 主配置文件路径（YAML/JSON），默认查找 loom/config.yaml
         auto_reload: 是否自动检测文件变化并热加载
         """
         self._config_file = Path(config_file) if config_file else None
