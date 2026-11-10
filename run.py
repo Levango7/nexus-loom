@@ -658,8 +658,9 @@ def _run_daemon(orch: PipelineOrchestrator) -> None:
 
 
 # ─── CLI 动词收敛（spec §7.3 第 7 步 / §5.3 CLI 行）─────────────
-#: 六个动词：run / plan / lock / pack / plugin / demo（demo = A4 离线体验）
-VERBS = ("run", "plan", "lock", "pack", "plugin", "demo")
+#: 七个动词：run / plan / lock / pack / plugin / demo / reconcile
+#（demo = A4 离线体验；reconcile = A7 只读对账报告）
+VERBS = ("run", "plan", "lock", "pack", "plugin", "demo", "reconcile")
 
 _PACK_ACTIONS = {"list": "pack_list", "check": "pack_check", "new": "pack_new"}
 
@@ -668,7 +669,7 @@ def _split_verb(argv: list[str]) -> tuple[str | None, str | None, list[str]]:
     """拆分动词前缀，返回 (verb, action, rest)。
 
     action ∈ {None, "plan", "lock", "pack_list", "pack_check", "plugin_list",
-    "demo"}。首个 token 不在动词表里 → (None, None, argv)：**裸输入 = 隐式
+    "demo", "reconcile"}。首个 token 不在动词表里 → (None, None, argv)：**裸输入 = 隐式
     run**，既有 `python run.py input.md …` 的调用形态全部照旧。
 
     `loom plan docgen` / `loom lock docgen` 里紧随动词的裸词 = 流水线名，
@@ -696,6 +697,13 @@ def _split_verb(argv: list[str]) -> tuple[str | None, str | None, list[str]]:
                   file=sys.stderr)
             raise SystemExit(2)
         return verb, "demo", []
+    if verb == "reconcile":
+        if rest and not rest[0].startswith("-"):
+            # 只拒位置参数；--stale-seconds / --json-output 等 flag 留给 argparse
+            print("用法: loom reconcile（只读对账报告，不接受位置参数）",
+                  file=sys.stderr)
+            raise SystemExit(2)
+        return verb, "reconcile", rest
     if verb in ("plan", "lock"):
         if rest and not rest[0].startswith("-"):
             return verb, verb, ["--pipeline", rest[0], *rest[1:]]
@@ -718,6 +726,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
   loom pack new <name>  生成新 pack 骨架（目录 + 模板文件，不注册不校验）
   loom plugin list      列出全部 Agent / 插件（含来源标记）
   loom demo             离线体验：沙盒里跑一次完整交付（无网络无 Key）
+  loom reconcile        只读对账报告：列队列×投影 stale-running 漂移（不杀进程不写库）
 
 示例:
   # 运行完整流水线 (自动发现 pipeline YAML；动词可省)
@@ -797,6 +806,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help="worker 空转多少秒后退出（默认不退出）")
     parser.add_argument("--lease-stale", type=float, default=900.0,
                         help="回收 running 行的租约阈值（秒）")
+    parser.add_argument("--stale-seconds", type=float, default=900.0,
+                        help="reconcile 报告判 running 行过期的阈值（秒），默认与 --lease-stale 同口径")
     parser.add_argument("--triggers", action="store_true",
                         help="定时触发常驻模式：按 triggers.yaml 的 cron 提交 run（Ctrl+C 退出）")
     parser.add_argument("--triggers-file", default=None,
@@ -857,7 +868,7 @@ def main():
         sys.exit(0)
 
     # 无输入文件时：仅 --check/--mcp/--recover/--replay-*/--triggers*、服务模式与
-    # plan/lock/pack/plugin/demo 动词可用。类型化输入（--inputs-json/--set-input）
+    # plan/lock/pack/plugin/demo/reconcile 动词可用。类型化输入（--inputs-json/--set-input）
     # 是"没有输入文件"的另一种输入形式，同样算给了输入。
     typed_cli = bool(args.inputs_json or args.set_input)
     if args.input is None and not typed_cli and not args.check and not args.mcp \
@@ -867,8 +878,8 @@ def main():
             and not args.admin and not args.dashboard and not args.daemon \
             and verb_action not in ("plan", "lock", "pack_list", "pack_new",
                                     "plugin_list",
-                                    "demo"):
-        parser.error('input required (or use verbs loom plan/lock/pack/plugin/demo, or flags like --check)')
+                                    "demo", "reconcile"):
+        parser.error('input required (or use verbs loom plan/lock/pack/plugin/demo/reconcile, or flags like --check)')
 
     print_banner()
 
@@ -1009,6 +1020,36 @@ def main():
                 print(f"    恢复失败: {e}")
         print(f"[recover] 恢复完成，{len(recovered)} 个任务已重新提交")
         orch.shutdown()
+        return
+
+    # ─── 只读对账报告（loom reconcile，A7）─────────────────
+    # 只报告、不修复：不自动杀进程、不写库（与 --recover 的回收写库语义刻意
+    # 分开；人在圈内看了报告再决定动什么）。三类判据见 loom_core/reconcile.py。
+    if verb_action == "reconcile":
+        from loom_core.reconcile import stale_running_report
+        from loom_core.run_store import RunStore
+        from loom_core.task_queue import TaskQueue
+
+        rows = stale_running_report(TaskQueue(), RunStore(),
+                                    stale_seconds=args.stale_seconds)
+        if args.json_output:
+            # 同 output_json_result 的通道：json_output 模式下 stdout 已改接
+            # stderr，结果 JSON 写 _RESULT_OUT（重定向前抓下的真 stdout）。
+            out = _RESULT_OUT if _RESULT_OUT is not None else sys.stdout
+            print(json.dumps(rows, ensure_ascii=False), file=out)
+            out.flush()
+        else:
+            print(f"[reconcile] stale-running 报告 "
+                  f"（stale_seconds={args.stale_seconds}；只读：未杀进程、未写库）")
+            if not rows:
+                print("[reconcile] 无 stale-running 漂移")
+            for r in rows:
+                pid = r["owner_pid"] or "—"
+                run = r["run_status"] or "（无投影行）"
+                print(f"  [{r['category']}] task={r['task_id']} "
+                      f"queue={r['queue_status']} run={run} pid={pid} "
+                      f"last_event_ts={r['last_event_ts']} reason={r['reason']}")
+            print(f"[reconcile] 共 {len(rows)} 行漂移")
         return
 
     # ─── 三阶段流水线模式（已移除，提供迁移指引）──────────
