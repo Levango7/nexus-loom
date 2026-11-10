@@ -380,6 +380,24 @@ class TestPlaceholderSectionFloor:
         assert res["hard_floor"] is True, res.get("violations")
         assert any("占位" in v for v in res["violations"]), res["violations"]
 
+    def test_restructure_unavailable_is_placeholder_not_pass(self, gate):
+        """第二批窄边界（2026-11-10）：有 Key 但重构不可用的拒绝稿同样是占位符。
+
+        它与 keyless 拒绝稿唯一的差别是"有 Key"，交付物属性没有变——没有
+        整合产物。门禁若只看字数/占比，这份自述照样能静默绿。
+        """
+        import packs.docgen.agents.quality_gate as qg
+        from loom_doc import degradation
+        assert degradation.RESTRUCTURE_UNAVAILABLE in qg.PLACEHOLDER_MARKERS
+        agent, Message = gate
+        stub = (f"# T\n\n> 生成时间: x\n\n{degradation.RESTRUCTURE_UNAVAILABLE}"
+                "：已读取 2 篇素材，重构不可用\n")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload={"content": stub, "task_id": "ru1",
+                                            "queries": ["Kafka"]}))
+        assert res["hard_floor"] is True, res.get("violations")
+        assert any("占位" in v for v in res["violations"]), res["violations"]
+
 
 # ─── 8. 抓取层中间格式不得当作成品交付 ────────────────────
 

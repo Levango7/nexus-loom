@@ -77,6 +77,29 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   回退拼贴未堵，留给第二批（引用可追溯）一并处置；`docs/product-spec.md` 的
   FP-1b 遗留条已按此进度改写。
 
+### Fixed（2026-11-10，T3 第二批窄边界：有 Key 但重构不可用时同样拒绝拼贴）
+
+- **重构返回 None 不得回退拼贴**：有 LLM Key 但 prompt 模板为空/加载失败（或章节
+  生成全灭）时 `_restructure_document` 返回 None，此前两条 web 素材路径
+  （`handle()` 检索摘要、`_build_from_articles` 文章）会把 `_generate_document` /
+  骨架+TF-IDF 的拼贴原样出厂——与 keyless 拼贴同一个病（FP-1b 同源）。现在两个
+  调用点的回退位改为交付 `degradation.RESTRUCTURE_UNAVAILABLE` 拒绝自述，并带
+  `restructure_refused: True` 统计。KB 抽取式草稿按其设计契约保留，不在此列。
+- **新占位标记入门禁契约**：`RESTRUCTURE_UNAVAILABLE` 并入
+  `loom_doc/degradation.py` 的 `PLACEHOLDER_MARKERS`——拒绝稿 = 没有交付物，质量门
+  必须判红，否则"拒绝拼贴"退化成另一种静默绿。
+- 判据：`test_writer.py` +2（文章路径 / 检索摘要路径各一）、`test_fidelity_gate.py`
+  +1（拒绝稿命中即红）；writer/fidelity 两套 109 条全绿，README 计数 3856→3859。
+- 新登记（不修，待裁决）：空 query 时有 Key 仍走拼贴交付（articles 的 TF-IDF
+  填充 / 检索摘要的 `_generate_document` 拼接），keyless 同形状已拒绝——是否同拒
+  属设计问题，留主题相关性/引用可追溯批裁决。
+- 回归修复（批一引入，本批修）：`test_dual_path_parity` 的 legacy 路径无
+  per-node config，keyless 拒绝稿在默认保底判据下判红、YAML 夹具路径（夹具
+  显式关底线）判绿，终态分叉。已按夹具既定裁决把同款底线语义注进 legacy 全局
+  `MOCK_CONFIG`；批一验证面（writer/kb/integration/p2 + pack E2E）漏了这一套，
+  全量复跑方暴露。复跑：parity 2 passed；全量 3859 passed / 24 skipped /
+  6 deselected。
+
 ### Fixed（2026-11-10，设计锚点脚本重钉回绿）
 
 - `scripts/check_design_anchors.py`：origin/main 5bf6445（L4-01 run-metrics）+

@@ -26,8 +26,12 @@ DEGRADE_BANNER = "> ⚠️ **降级声明**"
 # 出厂（FP-1b 的源头）；KB 抽取式草稿是另一条约（内容本就叫摘录），不在此列。
 KEYLESS_REFUSAL = "无 LLM API Key，拒绝输出原始素材拼贴稿"
 
+# 有 Key 但 LLM 重构不可用/失败（prompt 模板为空或加载失败、章节生成全灭）时，
+# web 素材路径同样不得回退拼贴——与 keyless 拼贴同一个病（FP-1b 同源），同样拒绝。
+RESTRUCTURE_UNAVAILABLE = "LLM 重构不可用，拒绝输出原始素材拼贴稿"
+
 # 门禁据此判失败：占位符标记，命中即视为"没有产出"
-PLACEHOLDER_MARKERS = (EMPTY_RESULT_DOC, NO_SOURCE, KEYLESS_REFUSAL)
+PLACEHOLDER_MARKERS = (EMPTY_RESULT_DOC, NO_SOURCE, KEYLESS_REFUSAL, RESTRUCTURE_UNAVAILABLE)
 
 # ── 抓取层中间格式泄漏 ────────────────────────────────────
 # `fetcher._save_article` 落盘的每篇文章是这个形状：

@@ -1148,7 +1148,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3856 个测试本机全绿**（`3856 passed, 24 skipped, 6 deselected`，2026-11-10 按 +1 条
+**3859 个测试本机全绿**（`3859 passed, 24 skipped, 6 deselected`，2026-11-10 按 +3 条
+（T3 第二批窄边界：有 Key 但重构不可用时两条 web 素材路径拒绝回退拼贴，
+`tests/test_writer.py` +2；拒绝稿入门禁占位标记判据，`tests/test_fidelity_gate.py` +1）
+自 3856 推为；2026-11-10 按 +1 条
 （T3 治本批：keyless 拒绝稿入门禁占位标记判据，`tests/test_fidelity_gate.py` +1；
 `test_writer.py` 三处旧契约断言按裁决改写、不增减计数）自 3855 推为；2026-11-09 按 +21 条
 （#120 L4-01 运行级指标盖章：成本归属 ContextVar 作用域 + `quality_runs` 总分表 +

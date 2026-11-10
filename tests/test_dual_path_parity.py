@@ -36,8 +36,14 @@ AGENTS_UNDER_TEST = {
     "safe_writer": "safe_writer_agent",
 }
 
-# legacy 路径无 per-node config，mock 引擎经全局 config 注入
-MOCK_CONFIG = {"search_engines": ["mock"], "fail_fast": False}
+# legacy 路径无 per-node config，mock 引擎经全局 config 注入。
+# 后两条与 pipelines/test_pipeline.yaml 的 quality_gate 节点同款：那是编排接线
+# 夹具，底线两条判据显式关闭（真实底线行为钉在 tests/test_fidelity_gate.py）。
+# 2026-11-10 起 legacy 也注入同款——keyless 拒绝稿在默认判据下判红，会让两条
+# 路径终态分叉（YAML 路径夹具关底线判绿、legacy 判红），parity 被夹具语义差异
+# 打穿，而非编排漂移。
+MOCK_CONFIG = {"search_engines": ["mock"], "fail_fast": False,
+               "min_output_chars": 0, "placeholder_markers": []}
 
 
 def _make_orch(tmp_path: Path) -> PipelineOrchestrator:

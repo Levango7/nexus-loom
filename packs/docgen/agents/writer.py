@@ -744,6 +744,22 @@ class WriterAgent(BaseAgent):
             restructured = self._restructure_document(content, snippet_articles, query, title, task_id=task_id)
             if restructured:
                 content = restructured
+            else:
+                # 窄边界（2026-11-10 第二批）：有 Key 但重构返回 None（模板为空/
+                # 加载失败/章节生成全灭）时，_generate_document 的拼贴不得出厂——
+                # 与 keyless 拼贴同一个病（FP-1b 同源），拒绝之。
+                content = self._restructure_refusal_content(
+                    title, query, f"已检索 {len(results)} 条结果，重构不可用")
+                self.log_warning(
+                    f"任务 {task_id}: 有 Key 但 LLM 重构不可用，{len(results)} 条检索摘要"
+                    "无法整合成文，拒绝输出原始拼贴，只交降级自述")
+                return {"status": "ok", "task_id": task_id, "content": content,
+                        "stats": {"total_results": len(results),
+                                  "unique_chunks": len(chunks),
+                                  "sections": len({c.section for c in chunks}),
+                                  "word_count": len(content),
+                                  "char_count": len(content),
+                                  "restructure_refused": True}}
 
         self.report(AgentStatus.RUNNING, f"整合完成，生成 {len(content)} 字符")
         return {
@@ -845,6 +861,22 @@ class WriterAgent(BaseAgent):
             + (f"> 主题: {query}\n" if query else "")
             + f"\n{degradation.KEYLESS_REFUSAL}：{material_note}\n"
             "配置 LLM API Key（复制 .env.example 为 .env）后重新生成。\n"
+        )
+
+    def _restructure_refusal_content(self, title: str, query: str,
+                                      material_note: str) -> str:
+        """有 Key 但 LLM 重构不可用/失败时 web 素材路径的拒绝稿：同一约定。
+
+        与 keyless 拒绝稿是同一个病的两副面孔：web 素材的"整合"是 LLM 的活，
+        重构不可用时把骨架/摘要拼贴当成品出厂同样是 FP-1b。KB 抽取式草稿
+        不在此列（内容本就叫摘录）。
+        """
+        return (
+            f"# {title}\n\n"
+            f"> 生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            + (f"> 主题: {query}\n" if query else "")
+            + f"\n{degradation.RESTRUCTURE_UNAVAILABLE}：{material_note}\n"
+            "请检查 prompt 模板（pipelines/prompts/）与 LLM 服务可用性后重新生成。\n"
         )
 
     def _build_from_articles(self, articles: list[dict], query: str,
@@ -966,6 +998,20 @@ class WriterAgent(BaseAgent):
             restructured = self._restructure_document(content, article_contents, query, title, task_id=task_id)
             if restructured:
                 content = restructured
+            else:
+                # 窄边界（2026-11-10 第二批）：有 Key 但重构返回 None（模板为空/
+                # 加载失败/章节生成全灭）时，骨架+TF-IDF 填充的拼贴不得出厂——
+                # 与 keyless 拼贴同一个病（FP-1b 同源），拒绝之。
+                content = self._restructure_refusal_content(
+                    title, query, f"已读取 {len(article_contents)} 篇素材，重构不可用")
+                self.log_warning(
+                    f"任务 {task_id}: 有 Key 但 LLM 重构不可用，{len(article_contents)} 篇素材"
+                    "无法整合成文，拒绝输出原始拼贴，只交降级自述")
+                return {"status": "ok", "task_id": task_id, "content": content,
+                        "stats": {"articles_used": len(article_contents), "sections": 0,
+                                  "word_count": len(content),
+                                  "char_count": len(content),
+                                  "empty_sections": [], "restructure_refused": True}}
 
         # LLM 润色段落衔接（当重构未运行时）
         if query and not content.startswith("# ") and content.count("##") < 2:

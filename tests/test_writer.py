@@ -522,6 +522,26 @@ class TestHandle:
         assert res["content"] == "RESTRUCTURED"
         w._restructure_document.assert_called_once()
 
+    def test_results_mode_with_llm_but_restructure_unavailable_refuses_collage(self, tmp_path):
+        """窄边界（2026-11-10 第二批）：检索摘要路径同理——有 Key 但重构不可用
+        时 _generate_document 的拼贴不得出厂。"""
+        w = _make_writer(tmp_path)
+        w._llm_api_key = "k"
+        w._prompt_profile = "__no_such_template__"
+        results = [
+            {"title": "Kafka 教程指南", "snippet": "安装配置使用教程 " * 10,
+             "url": "https://a.com", "source": "bing"},
+            {"title": "Kafka 概念原理", "snippet": "架构设计机制 " * 10,
+             "url": "https://b.com", "source": "sogou"},
+        ]
+        res = w.handle(_msg({"task_id": "t6", "query": "Kafka", "results": results}))
+        assert res["status"] == "ok"
+        assert degradation.RESTRUCTURE_UNAVAILABLE in res["content"]
+        assert degradation.KEYLESS_REFUSAL not in res["content"]
+        assert "安装配置使用教程" not in res["content"]
+        assert "## 参考资料" not in res["content"]
+        assert res["stats"]["restructure_refused"] is True
+
     def test_articles_dispatch(self, tmp_path):
         w = _make_writer(tmp_path)
         w._build_from_articles = MagicMock(return_value={"status": "ok", "task_id": "t8"})
@@ -606,6 +626,23 @@ class TestBuildFromArticles:
         articles = self._write_articles(tmp_path)
         res = w._build_from_articles(articles, "Kafka", "T", "default", "t2")
         assert res["content"] == "LLM-RESTRUCTURED"
+
+    def test_build_with_llm_but_restructure_unavailable_refuses_collage(self, tmp_path):
+        """窄边界（2026-11-10 第二批）：有 Key 但模板为空时重构返回 None，
+        骨架+TF-IDF 的拼贴不得出厂，同 keyless 一样只交拒绝自述。"""
+        w = _make_writer(tmp_path)
+        w._llm_api_key = "k"
+        w._prompt_profile = "__no_such_template__"  # _load_prompt_template → {}
+        articles = self._write_articles(tmp_path)
+        res = w._build_from_articles(articles, "Kafka 架构", "Kafka 文档", "default", "t1")
+        assert res["status"] == "ok"
+        content = res["content"]
+        assert degradation.RESTRUCTURE_UNAVAILABLE in content
+        assert degradation.KEYLESS_REFUSAL not in content  # 不是 keyless 的措辞
+        assert "架构设计非常优秀" not in content
+        assert "## 参考资料" not in content
+        assert res["stats"]["articles_used"] == 2
+        assert res["stats"]["restructure_refused"] is True
 
     def test_empty_query_skeleton_used(self, tmp_path):
         w = _make_writer(tmp_path)
