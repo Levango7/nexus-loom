@@ -457,3 +457,108 @@ class TestRawFetchBlockFloor:
         assert '"标题: ' in src and "{'='*60}" in src, "fetcher 的块格式变了，签名要同步"
         assert degradation.raw_fetch_block_count(FETCH_LEAK_DOC) == 1
         assert degradation.raw_fetch_block_count(REAL_DOC) == 0
+
+
+# ─── 9. 来源可追溯 + 主题绑定底线（2026-11-10 第三批裁决） ────────
+
+#: 带「> 主题:」声明行且引用在素材集合内的交付物形状
+BOUND_DOC = (
+    "# Kafka 配额与限流\n\n"
+    "> 主题: Kafka 配额\n\n"
+    "## 生产者配额\n\n"
+    "producer_byte_rate 限制单个客户端每秒可写入的字节数。超过阈值后请求不会"
+    "被直接拒绝，而是进入节流等待，从而避免突发流量打爆 broker 的网络线程。"
+    "配额服务每 15 秒重新计算一次剩余份额，并在租户之间按权重公平分配。\n\n"
+    "## 参考资料\n\n- [Kafka 官方文档](https://kafka.apache.org/documentation)\n"
+)
+
+#: writer 在 stats 里如实报告的信号源（query + 实际整合的素材 URL 集合）
+WRITER_STATS = {"query": "Kafka 配额",
+                "source_urls": ["https://kafka.apache.org/documentation"]}
+
+
+class TestProvenanceFloor:
+    """成品必须与本次运行的素材/查询同源——结构性对账，不做关键词计数
+    （FP-1 裁决：启发指标在真假样本上无可分离分布，用这种指标做门禁
+    等于再造一个假绿）。"""
+
+    def _gate_payload(self, content, stats, **cfg):
+        payload = {"content": content, "task_id": "pv1",
+                   "queries": ["Kafka 配额"],
+                   "dependencies_results": {"writer": {"stats": stats}}}
+        if cfg:
+            payload["config"] = cfg
+        return payload
+
+    def test_binding_and_traceable_url_pass(self, gate):
+        agent, Message = gate
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(BOUND_DOC,
+                                                              WRITER_STATS)))
+        assert not res.get("hard_floor"), res.get("violations")
+
+    def test_topic_declaration_mismatch_is_hard_floor(self, gate):
+        """成品声明的主题与运行查询不一致 ⇒ 答错题/缓存漂移，红。"""
+        agent, Message = gate
+        doc = BOUND_DOC.replace("> 主题: Kafka 配额", "> 主题: Redis 集群")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(doc, WRITER_STATS)))
+        assert res["hard_floor"] is True
+        assert any("主题" in v for v in res["violations"]), res["violations"]
+        assert res["needs_regenerate"] is False
+
+    def test_missing_topic_line_is_hard_floor(self, gate):
+        agent, Message = gate
+        doc = BOUND_DOC.replace("> 主题: Kafka 配额\n\n", "")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(doc, WRITER_STATS)))
+        assert res["hard_floor"] is True
+        assert any("主题" in v for v in res["violations"]), res["violations"]
+
+    def test_untraceable_url_is_hard_floor(self, gate):
+        """成品引用了本次运行素材集合之外的链接 ⇒ 引用不可追溯，红。"""
+        agent, Message = gate
+        doc = BOUND_DOC.replace("https://kafka.apache.org/documentation",
+                                "https://hallucinated.example.org/fake")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(doc, WRITER_STATS)))
+        assert res["hard_floor"] is True
+        assert any("引用不可追溯" in v for v in res["violations"]), res["violations"]
+
+    def test_no_stats_reported_means_no_signal(self, gate):
+        """writer 缺报告（如旧路径）时不罚——判据只对有信号的情况负责。"""
+        agent, Message = gate
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(BOUND_DOC, {})))
+        assert not res.get("hard_floor"), res.get("violations")
+
+    def test_kb_scheme_urls_are_exempt(self, gate):
+        """KB 路径引用是 kb://（非 http），不在素材集合对账范围——另一条
+        设计契约（抽取式草稿），不被本判据误伤。"""
+        agent, Message = gate
+        doc = BOUND_DOC.replace(
+            "- [Kafka 官方文档](https://kafka.apache.org/documentation)",
+            "- [Kafka 官方文档](https://kafka.apache.org/documentation)\n"
+            "- [本地手册](kb://手册.pdf#chunk-3)")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(doc, WRITER_STATS)))
+        assert not res.get("hard_floor"), res.get("violations")
+
+    def test_opt_out_is_explicit(self, gate):
+        agent, Message = gate
+        doc = BOUND_DOC.replace("https://kafka.apache.org/documentation",
+                                "https://hallucinated.example.org/fake")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(doc, WRITER_STATS,
+                                                              trace_citations=False)))
+        assert not res.get("hard_floor"), res.get("violations")
+
+    def test_string_false_disables_like_other_floors(self, gate):
+        """YAML 里 trace_citations: "false" 是字符串，bool("false") 会判真。"""
+        agent, Message = gate
+        doc = BOUND_DOC.replace("https://kafka.apache.org/documentation",
+                                "https://hallucinated.example.org/fake")
+        res = agent.handle(Message(topic="quality_gate.input",
+                                   payload=self._gate_payload(doc, WRITER_STATS,
+                                                              trace_citations="false")))
+        assert not res.get("hard_floor"), res.get("violations")

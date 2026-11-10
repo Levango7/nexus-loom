@@ -731,6 +731,22 @@ class WriterAgent(BaseAgent):
                               "char_count": len(content),
                               "keyless_refused": True}}
 
+        # 裁决（2026-11-10 第三批）：同 articles 路径——空查询时重构没有
+        # 目标，_generate_document 的摘要拼贴不得出厂。
+        if not query and self._llm_api_key:
+            content = self._restructure_refusal_content(
+                title, query, f"已检索 {len(results)} 条结果，无查询主题可执行重构")
+            self.log_warning(
+                f"任务 {task_id}: 有 Key 但查询为空，{len(results)} 条检索摘要"
+                "无法按主题重构，拒绝输出拼贴，只交降级自述")
+            return {"status": "ok", "task_id": task_id, "content": content,
+                    "stats": {"total_results": len(results),
+                              "unique_chunks": len(chunks),
+                              "sections": len({c.section for c in chunks}),
+                              "word_count": len(content),
+                              "char_count": len(content),
+                              "restructure_refused": True}}
+
         # LLM 重构：即使只有搜索摘要，也用 LLM 生成完整技术文档
         if query and self._llm_api_key:
             # 将搜索摘要转为伪文章上下文
@@ -772,6 +788,10 @@ class WriterAgent(BaseAgent):
                 "sections": len(set(c.section for c in chunks)),
                 "word_count": len(content),
                 "char_count": len(content),
+                # 与 _build_from_articles 同约：主题绑定 + 引用可追溯的信号源
+                "query": query,
+                "source_urls": sorted({r.get("url", "") for r in results
+                                       if r.get("url")}),
             }
         }
 
@@ -831,7 +851,10 @@ class WriterAgent(BaseAgent):
         draft = "\n".join(parts).strip()
         sources = sorted({str(h.get("source", "?")) for h in hits})
         stats = {"kb_hits": len(hits), "kb_sources": len(sources),
-                 "char_count": len(draft), "llm_used": False}
+                 "char_count": len(draft), "llm_used": False,
+                 # KB 引用是 kb://（非 http），可追溯集合检查天然豁免；
+                 # 这里只报查询，供主题绑定判据对账。
+                 "query": query}
 
         if query and self._llm_api_key:
             restructured = self._restructure_document(
@@ -929,6 +952,21 @@ class WriterAgent(BaseAgent):
                               "word_count": len(content),
                               "char_count": len(content),
                               "empty_sections": [], "keyless_refused": True}}
+
+        # 裁决（2026-11-10 第三批）：web 素材只有在 LLM 重构真正执行时才可交付。
+        # 空查询时重构没有目标，与无 Key / 重构不可用同病——骨架+TF-IDF 的
+        # 拼贴不得出厂（keyless 同形状已拒绝，这里把有 Key 的同形状缺口堵上）。
+        if not query and self._llm_api_key and article_contents:
+            content = self._restructure_refusal_content(
+                title, query, f"已读取 {len(article_contents)} 篇素材，无查询主题可执行重构")
+            self.log_warning(
+                f"任务 {task_id}: 有 Key 但查询为空，{len(article_contents)} 篇素材"
+                "无法按主题重构，拒绝输出拼贴，只交降级自述")
+            return {"status": "ok", "task_id": task_id, "content": content,
+                    "stats": {"articles_used": len(article_contents), "sections": 0,
+                              "word_count": len(content),
+                              "char_count": len(content),
+                              "empty_sections": [], "restructure_refused": True}}
 
         # Step 2: 创建文档骨架
         skeleton = self._plan_skeleton(query, title, article_contents)
@@ -1031,6 +1069,11 @@ class WriterAgent(BaseAgent):
                 "word_count": len(content),
                 "char_count": len(content),
                 "empty_sections": empty_sections,
+                # 门禁来源可追溯判据的信号源：本次整合实际读入的素材 URL
+                # 集合与查询。缺报告 = 无信号，门禁跳过不罚。
+                "query": query,
+                "source_urls": sorted({c["url"] for c in article_contents
+                                       if c.get("url")}),
             }
         }
 
@@ -1173,6 +1216,21 @@ class WriterAgent(BaseAgent):
         return text.strip()
 
     @staticmethod
+    def _stamp_topic_header(text: str, query: str) -> str:
+        """重构输出是 LLM 按模板新生的文档，`> 主题:` 声明行默认不在其中。
+
+        主题绑定是门禁可核验的契约（成品声明的主题必须等于运行查询），
+        缺该行时按 query 补回；模板自带则不动。空 query 无绑定可声明。
+        """
+        if not query:
+            return text
+        lines = text.split("\n")
+        if any(ln.startswith("> 主题:") for ln in lines[:6]):
+            return text
+        idx = 1 if (lines and lines[0].startswith("# ")) else 0
+        return "\n".join(lines[:idx] + [f"> 主题: {query}"] + lines[idx:])
+
+    @staticmethod
     def _remove_truncated_mermaid_blocks(text: str) -> str:
         """删除截断的 Mermaid 块（只有开标签没闭标签）"""
         lines = text.split("\n")
@@ -1290,6 +1348,7 @@ class WriterAgent(BaseAgent):
         final = self._assemble_sections(results_parallel, title, stream_callback)
         if final is None:
             return None
+        final = self._stamp_topic_header(final, query)
         self._restructure_cache.set(cache_key_short, final)
         return final
 

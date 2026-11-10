@@ -100,6 +100,32 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   全量复跑方暴露。复跑：parity 2 passed；全量 3859 passed / 24 skipped /
   6 deselected。
 
+### Fixed（2026-11-10，T3 第三批：主题绑定 + 引用可追溯 + 空查询同拒）
+
+- **主题相关性与引用可追溯改为结构性判据（设计裁决，走 FP-1 路线）**：主题
+  相关性不做成关键词计数门禁（FP-1 实测已证启发指标在真假样本上无可分离
+  分布，"用这种指标做门禁等于再造一个假绿"），改为两条底线——writer 在
+  stats 报告本次整合的 `query` 与实际读入素材的 `source_urls` 集合，成品须
+  带 `> 主题:` 声明行且与 query 逐字相等、成品里每个 http(s) 链接必须落在
+  `source_urls` 集合内；命中即 `hard_floor` 判红（不重做），`trace_citations:
+  false` 可显式放行（`packs/docgen/agents/quality_gate.py`
+  `_provenance_violations`）。缓存漂移/答错题与 LLM 编造引用在这层现形，
+  不再依赖"页面标题恰含主题词"那类可被反向骗过的评分。
+- **空查询同拒**：web 素材路径的交付契约是"只有 LLM 重构真正执行才可交付"。
+  空查询时重构没有目标，此前有 Key 仍把骨架+TF-IDF / 摘要拼贴出厂（keyless
+  同形状已拒绝的不对称，第二批已登记待裁决），现在两条 web 素材路径同拒
+  （`RESTRUCTURE_UNAVAILABLE` 拒绝自述 + `restructure_refused: True`）；
+  KB 抽取式草稿按其既有设计契约保留。
+- **重构输出补回主题声明行**：`_restructure_document` 的 LLM 新生文档不带
+  `> 主题:` 行（prompt 模板里没有），writer 现在按 query 补回
+  （`_stamp_topic_header`），使绑定对账在重构路径上也有锚；模板自带则不动。
+- 判据：`test_writer.py` +7（空查询同拒两路径 / stats 信号源两路径 / 主题行
+  补回三例）、`test_fidelity_gate.py` +8（绑定一致/缺失/错题、不可追溯 URL、
+  无信号跳过、kb:// 豁免、显式与字符串假值放行）。
+- 如实登记：`_score_topic_relevance` 的关键词覆盖软分保持原样——它是评分
+  维度不是门禁，FP-1 禁的是"用启发指标做门禁"；本批把判红能力从评分维度
+  移交给上面的结构底线。
+
 ### Fixed（2026-11-10，设计锚点脚本重钉回绿）
 
 - `scripts/check_design_anchors.py`：origin/main 5bf6445（L4-01 run-metrics）+

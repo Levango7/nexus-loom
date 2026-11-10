@@ -542,6 +542,36 @@ class TestHandle:
         assert "## 参考资料" not in res["content"]
         assert res["stats"]["restructure_refused"] is True
 
+    def test_results_mode_stats_carry_source_urls(self, tmp_path):
+        """检索摘要路径同约：stats 报告查询与用过的素材 URL 集合。"""
+        w = _make_writer(tmp_path)
+        w._llm_api_key = "k"
+        w._restructure_document = MagicMock(return_value="RESTRUCTURED")
+        results = [
+            {"title": "A", "snippet": "x" * 60, "url": "https://a.com",
+             "source": "bing"},
+            {"title": "B", "snippet": "y" * 60, "url": "https://b.com",
+             "source": "sogou"},
+        ]
+        res = w.handle(_msg({"task_id": "t11", "query": "Kafka",
+                             "results": results}))
+        assert res["stats"]["query"] == "Kafka"
+        assert res["stats"]["source_urls"] == ["https://a.com", "https://b.com"]
+
+    def test_results_mode_empty_query_with_key_refuses_collage(self, tmp_path):
+        """第三批裁决：检索摘要路径同拒——空查询时重构没有目标，摘要拼贴
+        不得出厂（keyless 同形状已拒绝）。"""
+        w = _make_writer(tmp_path)
+        w._llm_api_key = "k"
+        results = [{"title": "A", "snippet": "安装配置使用教程 " * 10,
+                    "url": "https://a.com", "source": "bing"}]
+        res = w.handle(_msg({"task_id": "t12", "query": "", "results": results}))
+        assert res["status"] == "ok"
+        assert degradation.RESTRUCTURE_UNAVAILABLE in res["content"]
+        assert "安装配置使用教程" not in res["content"]
+        assert "## 参考资料" not in res["content"]
+        assert res["stats"]["restructure_refused"] is True
+
     def test_articles_dispatch(self, tmp_path):
         w = _make_writer(tmp_path)
         w._build_from_articles = MagicMock(return_value={"status": "ok", "task_id": "t8"})
@@ -644,11 +674,52 @@ class TestBuildFromArticles:
         assert res["stats"]["articles_used"] == 2
         assert res["stats"]["restructure_refused"] is True
 
+    def test_empty_query_with_key_refuses_collage(self, tmp_path):
+        """第三批裁决（2026-11-10）：空查询 + 有 Key + 有素材 ⇒ 重构没有目标，
+        与 keyless / 重构不可用同拒，骨架+TF-IDF 拼贴不得出厂。"""
+        w = _make_writer(tmp_path)
+        w._llm_api_key = "k"
+        articles = self._write_articles(tmp_path)
+        res = w._build_from_articles(articles, "", "T", "default", "t4")
+        assert res["status"] == "ok"
+        content = res["content"]
+        assert degradation.RESTRUCTURE_UNAVAILABLE in content
+        assert degradation.KEYLESS_REFUSAL not in content
+        assert "架构设计非常优秀" not in content
+        assert "## 参考资料" not in content
+        assert res["stats"]["restructure_refused"] is True
+
+    def test_stats_carry_query_and_source_urls(self, tmp_path):
+        """门禁对账的信号源：query + 实际读入素材的 URL 集合。"""
+        w = _make_writer(tmp_path)
+        w._llm_api_key = "k"
+        w._restructure_document = MagicMock(return_value="LLM-RESTRUCTURED")
+        articles = self._write_articles(tmp_path)
+        res = w._build_from_articles(articles, "Kafka 架构", "T", "default", "t5")
+        assert res["stats"]["query"] == "Kafka 架构"
+        assert res["stats"]["source_urls"] == ["https://a1.com", "https://a2.com"]
+
     def test_empty_query_skeleton_used(self, tmp_path):
         w = _make_writer(tmp_path)
         res = w._build_from_articles([], "", "空文章", "default", "t3")
         assert res["status"] == "ok"
         assert "概述" in res["content"]
+
+
+class TestStampTopicHeader:
+    """重构输出是 LLM 新生文档，`> 主题:` 声明行由 writer 补回（门禁对账的锚）。"""
+
+    def test_adds_topic_line_after_title(self):
+        out = WriterAgent._stamp_topic_header("# T\n\nbody", "Kafka")
+        assert out.split("\n")[1] == "> 主题: Kafka"
+
+    def test_keeps_existing_line(self):
+        doc = "# T\n\n> 主题: Kafka\n\nbody"
+        assert WriterAgent._stamp_topic_header(doc, "Kafka") == doc
+
+    def test_empty_query_is_noop(self):
+        doc = "# T\n\nbody"
+        assert WriterAgent._stamp_topic_header(doc, "") == doc
 
 
 class TestPlanSkeleton:

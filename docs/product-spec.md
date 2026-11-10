@@ -214,9 +214,15 @@
 > 进展（2026-11-10，第二批窄边界）：有 Key 但 LLM 重构不可用（prompt 模板为空/
 > 加载失败、章节生成全灭）时，两条 web 素材路径的回退拼贴已堵——重构返回 None
 > 的调用点改交 `RESTRUCTURE_UNAVAILABLE` 拒绝自述（新进门禁占位标记，命中判红）。
-> 剩余：「主题相关性判定」与「引用可追溯性」仍开（排第二批）；另新登记一处不对称：
-> 空 query 时有 Key 仍走拼贴交付（articles 的 TF-IDF 填充 / 检索摘要拼接；
-> keyless 同形状已拒绝），是否同拒待裁决。
+> 剩余（2026-11-10 第三批已裁决并关闭）：「主题相关性判定」与「引用可追溯性」
+> 走 FP-1 路线——不做关键词计数门禁（启发指标在真假样本上无可分离分布），
+> 改为两条结构底线：writer stats 报告 `query` 与 `source_urls`，成品「> 主题:」
+> 声明行须与 query 逐字相等、成品每个 http(s) 链接须落在 `source_urls` 集合内，
+> 命中即 `hard_floor`（`quality_gate.py` `_provenance_violations`；`trace_citations:
+> false` 显式放行）。空 query 不对称同批裁决：同拒——web 素材只在 LLM 重构
+> 真正执行时才可交付，空查询时重构无目标，与 keyless / 重构不可用同病
+> （`writer.py` 两条 web 路径）；KB 抽取式草稿按其既有契约保留。
+> `_score_topic_relevance` 关键词软分保留为评分维度（评分非门禁，FP-1 禁的是后者）。
 
 ### FP-1 · 质量门给空壳文档打 98.8 —— P0，代价 S
 
