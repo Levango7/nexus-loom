@@ -1146,7 +1146,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3893 个测试本机全绿**（`3893 passed, 24 skipped, 6 deselected`，2026-11-11 按 +12 条
+**3897 个测试本机全绿**（`3897 passed, 24 skipped, 6 deselected`，2026-11-11 按 +4 条
+（KnowledgeBase 首建切 WAL 并发判据：持锁首建重试入 wal/护栏正例/形态钉死（AST 禁
+loom_core + 本土 enable_wal + 实现唯一）/双进程首建零异常；判据文件
+`tests/test_kb_wal_init.py`）自 3893 同 skipped 集推为；2026-11-11 按 +12 条
 （A7 只读对账报告判据：三类漂移逐行命中 + ①字段细核（ROW_KEYS 键序/最后事件时间取
 max/owner_pid 两变体）+ 负控不报 + 只读性实证（跑前后库零变化）+ CLI 人类/JSON 双通道
 + 动词翻译；判据文件 `tests/test_reconcile_report.py`）自 3881 同 skipped 集推为；2026-11-10 按 +16 条
