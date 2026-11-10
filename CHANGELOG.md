@@ -100,6 +100,18 @@ Loom 首个 PyPI 发行版（发行名 `nexusloom`；原名 doc-pipeline，2026-
   全量复跑方暴露。复跑：parity 2 passed；全量 3859 passed / 24 skipped /
   6 deselected。
 
+### Fixed（2026-11-11，T4：浏览器门提供方契约进仓）
+
+- `.github/workflows/ci.yml`：`dashboard-browser-gate` job 补浏览器提供方
+  契约注释——Chrome 来自运行器环境（仓外提供、仓内不装），`--channel chrome`
+  按运行器已装频道解析；本 job 只钉 playwright 版本、不执行
+  `playwright install`。运行器不再带 Chrome 时该步直接报错而非静默跳过；
+  处置（补 `playwright install chrome`）与接线判据的放行形态
+  （`--channel` 或 `playwright install` 二选一）一并写在 job 旁。此前该
+  契约只存在于 `tests/test_browser_gate.py` 的失败文案里，仓内无文档。
+- 判据：docs-only，无新增用例；`tests/test_browser_gate.py` 8 条原样通过
+  （接线判据读 ci.yml 断言，注释不影响）；设计锚点 checked=52 mismatched=0。
+
 ### Fixed（2026-11-10，T3 第三批：主题绑定 + 引用可追溯 + 空查询同拒）
 
 - **主题相关性与引用可追溯改为结构性判据（设计裁决，走 FP-1 路线）**：主题
