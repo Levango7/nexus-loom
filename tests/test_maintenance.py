@@ -87,7 +87,8 @@ class TestRunStoreCleanup:
         store = self._store(state)
         self._seed(store, "x", finished_at=1.0)
         result = store.cleanup(now=10_000_000.0)
-        assert result == {"runs": 0, "run_nodes": 0, "events": 0, "approvals": 0}
+        assert result == {"runs": 0, "run_nodes": 0, "events": 0, "approvals": 0,
+                          "run_ids": []}
         assert store.get_run("x") is not None
 
 
@@ -175,15 +176,30 @@ class TestGcRuns:
     def test_calls_through_with_counts(self):
         from loom_core.maintenance import Retention, gc_runs
         q = SimpleNamespace(cleanup=lambda days, rows: 2)
-        cost = SimpleNamespace(cleanup=lambda days: 1)
-        fb = SimpleNamespace(cleanup=lambda days: 0)
+        seen: dict = {}
+
+        def cost_fn(days, rows, run_ids=None):
+            seen["cost"] = (days, rows, run_ids)
+            return 1
+
+        def fb_fn(days, rows, run_ids=None):
+            seen["feedback"] = (days, rows, run_ids)
+            return 0
+
         rs = SimpleNamespace(cleanup=lambda days, rows: {"runs": 1})
         logs: list = []
-        result = gc_runs(queue=q, cost=cost, feedback=fb, run_store=rs,
+        result = gc_runs(queue=q, cost=SimpleNamespace(cleanup=cost_fn),
+                         feedback=SimpleNamespace(cleanup=fb_fn), run_store=rs,
                          retention=Retention(days=30, max_runs=10),
                          log=logs.append)
         assert result["queue"] == 2 and result["cost"] == 1
         assert result["run_store"] == {"runs": 1}
+        # 双判据 parity：cost/quality 两库现在也收 max_runs（过去漏接，
+        # max_runs-only 配置下两库无界）；run_store 先行回 run_ids，
+        # 以关键字落位（第三个位置参是 now，位置传会把 set 塞进时钟槽）
+        age = Retention(days=30, max_runs=10).age_days()
+        assert seen["cost"] == (age, 10, set())
+        assert seen["feedback"] == (age, 10, set())
         assert any("GC 执行" in m for m in logs)
 
     def test_store_failure_isolated(self):
@@ -210,6 +226,80 @@ class TestGcRuns:
         assert (r2.days, r2.max_runs) == (0, 0)
         r3 = retention_from_config(None)
         assert r3.enabled is False
+
+
+class TestCrossStoreGc:
+    """GC 的跨库口径：cost.db / quality.db 与 runs.db 是各自的库、无 FK。
+
+    实证（2026-11-10 prove_l4.py）：
+    - B1/B2：max_runs-only 配置下两库过去漏接数量判据 ⇒ 无界增长；
+    - C1：runs.db 已删的 run，两库里指向它的行过去原样留着 ⇒ 悬空 task_id。
+    """
+
+    def test_max_runs_only_prunes_cost_and_quality(self, state):
+        from loom_core.cost_tracker import CostTracker
+        from loom_core.maintenance import Retention, gc_runs
+        from loom_core.quality_feedback import QualityFeedback
+        ct = CostTracker(db_path=str(state / "cost.db"))
+        qf = QualityFeedback(db_path=str(state / "quality.db"))
+        for i in range(4):
+            ct.record("cloudflare", 10, 10, cost=0.01, task_id=f"t{i}")
+            qf.record_overall(f"t{i}", 0.8)
+            qf.record(f"t{i}", {"completeness": 0.8}, ["core"], "p")
+        result = gc_runs(cost=ct, feedback=qf,
+                         retention=Retention(days=0, max_runs=2))
+        assert result["cost"] == 2, result
+        assert result["feedback"] == 4, result      # history 裁 2 + 总分表裁 2
+        assert ct.total_cost() == pytest.approx(0.02), "只剩最新两条成本"
+        ct.close()
+        qf.close()
+
+    def test_gc_links_cost_and_quality_to_deleted_runs(self, state):
+        import sqlite3
+
+        from loom_core.cost_tracker import CostTracker
+        from loom_core.maintenance import Retention, gc_runs
+        from loom_core.quality_feedback import QualityFeedback
+        from loom_core.run_store import RunStore
+        rs = RunStore()
+        ct = CostTracker(db_path=str(state / "cost.db"))
+        qf = QualityFeedback(db_path=str(state / "quality.db"))
+        now = 10_000_000.0
+        rs.open_run("old", "p", started_at=now - 10)
+        rs.close_run("old", "done", finished_at=now - 9)
+        rs.open_run("keep", "p", started_at=now - 8)
+        rs.close_run("keep", "done", finished_at=now - 8)
+        ct.record("cloudflare", 10, 10, cost=0.01, task_id="old")
+        ct.record("cloudflare", 10, 10, cost=0.01, task_id="keep")
+        qf.record_overall("old", 0.8)
+        qf.record_overall("keep", 0.9)
+        result = gc_runs(cost=ct, feedback=qf, run_store=rs,
+                         retention=Retention(days=0, max_runs=1), now=now)
+        assert result["run_store"]["runs"] == 1
+        assert result["cost"] == 1, result          # old 的成本行联动删
+        assert result["feedback"] == 1, result      # old 的总分行联动删
+        conn = sqlite3.connect(str(state / "cost.db"))
+        try:
+            assert conn.execute(
+                "SELECT COUNT(*) FROM cost_log WHERE task_id=?",
+                ("old",)).fetchone()[0] == 0
+            assert conn.execute(
+                "SELECT COUNT(*) FROM cost_log WHERE task_id=?",
+                ("keep",)).fetchone()[0] == 1
+        finally:
+            conn.close()
+        conn = sqlite3.connect(str(state / "quality.db"))
+        try:
+            assert conn.execute(
+                "SELECT COUNT(*) FROM quality_runs WHERE task_id=?",
+                ("old",)).fetchone()[0] == 0
+            assert conn.execute(
+                "SELECT COUNT(*) FROM quality_runs WHERE task_id=?",
+                ("keep",)).fetchone()[0] == 1
+        finally:
+            conn.close()
+        ct.close()
+        qf.close()
 
 
 # ── D. worker 接线 ───────────────────────────────────────
