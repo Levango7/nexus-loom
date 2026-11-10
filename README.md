@@ -1145,7 +1145,9 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3861 个测试本机全绿**（`3861 passed, 24 skipped, 6 deselected`，2026-11-10 按 +6 条
+**3865 个测试本机全绿**（`3865 passed, 24 skipped, 6 deselected`，2026-11-10 按 +4 条
+（C-21 worker 空转超时确定性：假时钟+`sleep_fn` 注入，4 钉杀 5 变异；判据文件
+`tests/test_worker_idle_timeout.py`）自 3861 同 skipped 集推为；2026-11-10 按 +6 条
 （L4-02 GC 跨库口径：`close_run` 同事务结清待批 + max_runs 双判据接满 cost/quality
 两库 + `run_ids` 跨库联动删；判据文件 `tests/test_maintenance.py` +
 `tests/test_runstore_approvals.py`；+1 条为 cancel 路径结清置 consumed 的钉）自 3855 同 skipped 集推为；2026-11-09 按 +21 条

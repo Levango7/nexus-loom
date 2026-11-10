@@ -28,6 +28,7 @@ import os
 import signal
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -82,10 +83,20 @@ class TaskWorker:
 
     def run_forever(self, poll_interval: float = DEFAULT_POLL_INTERVAL,
                     stop_event: threading.Event | None = None,
-                    idle_timeout: float | None = None) -> int:
-        """消费直到 stop_event 置位或空转超过 idle_timeout。返回处理条数。"""
+                    idle_timeout: float | None = None,
+                    clock: Callable[[], float] = time.monotonic,
+                    sleep_fn: Callable[[float], None] | None = None) -> int:
+        """消费直到 stop_event 置位或空转超过 idle_timeout。返回处理条数。
+
+        clock 默认 time.monotonic（只增不减，免疫系统回拨把空转计时清零成
+        假超时）；sleep_fn 默认 time.sleep。两者都可不注入，测试借此做确定
+        性断言（triggers.py 同款 idiom）。idle_started 的判定用 ``is None``
+        而非真值——monotonic 值可以是 0.0 之类的小数，``or`` 会把每轮空转都
+        当首次而重置计时，空转超时永远不触发。
+        """
         stop_event = stop_event or threading.Event()
         idle_started: float | None = None
+        sleep = sleep_fn or time.sleep
         ticks = 0
         while not stop_event.is_set():
             ticks += 1
@@ -98,11 +109,12 @@ class TaskWorker:
                 self._maybe_gc()
             if item is None:
                 if idle_timeout is not None:
-                    idle_started = idle_started or time.time()
-                    if time.time() - idle_started >= idle_timeout:
+                    if idle_started is None:
+                        idle_started = clock()
+                    if clock() - idle_started >= idle_timeout:
                         self.log.info("worker 空转到超时，退出")
                         break
-                time.sleep(poll_interval)
+                sleep(poll_interval)
             else:
                 idle_started = None
         return self.processed
