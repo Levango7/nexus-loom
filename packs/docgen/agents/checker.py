@@ -25,7 +25,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "1.1"
 AGENT_DESC = "结构检查 Agent - P0/P1/P2/P3 分级质检"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 50
 INPUT_TOPICS = ["writer.done", "checker.check", "checker.input"]
 OUTPUT_TOPICS = ["checker.done", "checker.failed"]

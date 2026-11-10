@@ -30,7 +30,7 @@ from .executor_factory import create_executor, shutdown_executor
 from .naming import agent_of, family_of
 from .observability import get_logger, get_metrics
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .backfill import RunBackfill
     from .registry import AgentMeta
     from .scheduler import ExecutionNode, ExecutionPlan
@@ -779,7 +779,9 @@ class PipelineOrchestrator:
         不结的后果是收件箱里留一条**点不掉的待办**：运行已经取消，approve 只会得到
         "未在审批等待中"，而人在收件箱里看到的仍是"等你确认"。结批用 `rejected`
         （不新增词汇）、`by=system` 且 reason 写明来由——事件流里仍是一条
-        `approval.decided`，审计能看出这是系统结的而不是人批的。
+        `approval.decided`，审计能看出这是系统结的而不是人批的。decide 落下去后
+        立刻 `consume`：系统驳回同样不是给执行器的指令，不置消费位会被同 task_id
+        的重跑经 `open_decision` 当闸门裁决吃掉（与 close_run 的结清同语义）。
 
         控制动作不能因为台账不可用而失败：这里只告警，取消本身照常生效。
         """
@@ -787,8 +789,11 @@ class PipelineOrchestrator:
             row = self.approvals.pending_for_run(task_id)
             if not row:
                 return
-            self.approvals.decide(str(row["request_id"]), "rejected",
-                                  by="system", note="", reason=reason)
+            # decide 返回 False = 行已被别人裁决（并发人工点了收件箱），不动它的
+            # 消费位；只有系统亲手结掉的才消费，避免吃掉人的并发决定。
+            if self.approvals.decide(str(row["request_id"]), "rejected",
+                                     by="system", note="", reason=reason):
+                self.approvals.consume(str(row["request_id"]))
             self._log("info", f"取消时结清待批：{reason}", task_id=task_id)
         except Exception as e:  # noqa: BLE001
             self._logger.log("warning", "取消时结清待批失败",

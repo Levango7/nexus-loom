@@ -432,3 +432,69 @@ class TestLedgerUnavailable:
             assert not (state / "approvals.db").exists()
         finally:
             orch.shutdown()
+
+
+# ─── 5. 收尾结清待批（close_run 同事务） ──────────────────
+
+class TestCloseRetiresPendingApprovals:
+    """close_run 盖章时同事务结清该运行的待批（实证 A6：cancel 会结，
+    close/backfill 不会）——收件箱不许给已收尾的运行留点不掉的待办。"""
+
+    def test_close_retires_pending_with_system_rejected(self, tmp_path):
+        store = _store(tmp_path)
+        store.open_approval("r1", "req-1", pipeline="p", nodes=["n1"],
+                            principal="u")
+        store.close_run("r1", "done", finished_at=100.0)
+        row = store.get_approval("req-1")
+        assert row["status"] == REJECTED
+        assert row["decided_by"] == "system"
+        assert "收尾" in row["reason"]
+        assert row["decided_at"] == 100.0
+        types = [e["type"] for e in store.events("r1")]
+        assert types.count("approval.decided") == 1
+        assert types.count("approval.consumed") == 1
+        assert types.index("approval.decided") < types.index("approval.consumed")
+        assert types.index("approval.consumed") < types.index("run.completed")
+        # 结清必须同事务置消费位：否则同 run_id 的新执行会经 open_decision
+        # 吃到这条系统驳回，闸门永久武装不上（实证于 test_approval_gate）。
+        assert row["consumed"] == 1
+        assert store.open_approvals("r1") == []
+
+    def test_close_never_touches_other_runs(self, tmp_path):
+        store = _store(tmp_path)
+        store.open_approval("r1", "req-1", pipeline="p")
+        store.open_approval("r2", "req-2", pipeline="p")
+        store.close_run("r1", "done", finished_at=100.0)
+        assert store.get_approval("req-2")["status"] == PENDING
+
+    def test_cancel_then_close_decides_once(self, tmp_path):
+        """cancel 已结的行，close_run 的幂等守卫不让事件二发、reason 不被覆盖。"""
+        store = _store(tmp_path)
+        store.open_approval("r1", "req-1", pipeline="p")
+        store.decide_approval("req-1", REJECTED, by="system",
+                              reason="运行已取消")
+        store.close_run("r1", "cancelled", finished_at=100.0)
+        types = [e["type"] for e in store.events("r1")]
+        assert types.count("approval.decided") == 1
+        assert store.get_approval("req-1")["reason"] == "运行已取消"
+
+    def test_cancel_retire_also_consumes(self, tmp_path):
+        """cancel 路径同语义：_retire_pending_approvals 结清后同样置消费位。
+
+        不置的后果与 close_run 结清相同——同 task_id 的重跑会经 open_decision
+        把这条系统驳回当成闸门裁决，任务直接 cancelled 而非重新武装闸门。
+        """
+        orch = _orch(tmp_path)
+        task = _run_to_gate(orch, tmp_path)
+        assert task.awaiting_approval
+        assert orch.cancel(task.id)
+        store = orch._runstore()
+        rows = store.approvals_for_run(task.id)
+        assert len(rows) == 1
+        row = rows[0]
+        assert (row["status"], row["decided_by"], row["reason"],
+                row["consumed"]) == (REJECTED, "system", "运行已取消", 1)
+        types = [e["type"] for e in store.events(task.id)]
+        assert types.count("approval.decided") == 1
+        assert types.count("approval.consumed") == 1
+        assert store.open_approvals(task.id) == []

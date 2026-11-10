@@ -35,7 +35,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "1.0"
 AGENT_DESC = "资料摄入 Agent - PDF/图片/文本 → 结构化 Markdown"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 10
 # 只订阅自己的输入主题。历史上这里多挂了一个 `researcher.input`，
 # 于是发给 researcher 的定向 RPC 被本 Agent 接走并回了"未指定待摄入文件"，

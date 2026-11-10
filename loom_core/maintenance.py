@@ -83,6 +83,9 @@ def gc_runs(*, queue: Any = None, cost: Any = None, feedback: Any = None,
     任一 store 的清理失败只记 `failed` 计数与告警，不影响其余 store——
     删掉一半永远比不删更糟吗？不，但**删失败报出来**必须成立：静默的
     清理功能就是下一个死代码。
+
+    RunStore 先清：它的 cleanup 回被删 run_id 集合，cost/quality 两库按它
+    联动删（跨库无 FK，不联动就留指向已删运行的悬空行——实证 C1）。
     """
     if retention is None:
         retention = Retention()
@@ -94,13 +97,21 @@ def gc_runs(*, queue: Any = None, cost: Any = None, feedback: Any = None,
     if now is not None:
         rs_args = (*rs_args, now)
     summary: dict[str, Any] = {"enabled": True}
+    rs_result = _run_cleanup(run_store, "cleanup", rs_args, "run_store")
+    run_ids: set[str] = set()
+    if isinstance(rs_result, dict):
+        run_ids = {str(x) for x in (rs_result.get("run_ids") or [])}
+    summary["run_store"] = rs_result
     summary["queue"] = _run_cleanup(queue, "cleanup", (age, retention.max_runs),
                                     "task_queue")
-    summary["cost"] = _run_cleanup(cost, "cleanup", (age,), "cost_tracker")
-    summary["feedback"] = _run_cleanup(feedback, "cleanup", (age,),
-                                       "quality_feedback")
-    summary["run_store"] = _run_cleanup(run_store, "cleanup", rs_args,
-                                        "run_store")
+    # 双判据对全部 store 成立：max_runs 过去只接到 queue/run_store/deliveries/
+    # dlq 四面，cost/quality 两库漏接 ⇒ max_runs-only 配置下两库无界（实证 B1）。
+    summary["cost"] = _run_cleanup(cost, "cleanup", (age, retention.max_runs),
+                                   "cost_tracker", {"run_ids": run_ids})
+    summary["feedback"] = _run_cleanup(feedback, "cleanup",
+                                       (age, retention.max_runs),
+                                       "quality_feedback",
+                                       {"run_ids": run_ids})
     summary["deliveries"] = _run_cleanup(deliveries, "cleanup", rs_args,
                                          "delivery_ledger")
     # 死信表此前只进不出（A6 漏掉的那一张）：判据形状与其他 store 相同。
@@ -157,7 +168,10 @@ def format_summary(summary: dict[str, Any], retention: Retention | None = None
         if isinstance(value, dict) and value.get("failed"):
             lines.append(f"  {name}: 失败（{value.get('message', '')}）")
         elif isinstance(value, dict):
-            parts = " ".join(f"{k}={v}" for k, v in sorted(value.items()))
+            # run_ids 是 list（被删 run 集合），进日志只会刷屏；计数在
+            # count_dropped 里已按表入账，这里只打 int 面。
+            parts = " ".join(f"{k}={v}" for k, v in sorted(value.items())
+                             if isinstance(v, int) and not isinstance(v, bool))
             lines.append(f"  {name}: {parts}")
         else:
             lines.append(f"  {name}: {value} 行")
@@ -194,7 +208,8 @@ def gc_interval_seconds(config: Any) -> int:
     return max(value, 0)
 
 
-def _run_cleanup(store: Any, method: str, args: tuple, label: str) -> Any:
+def _run_cleanup(store: Any, method: str, args: tuple, label: str,
+                 kwargs: dict[str, Any] | None = None) -> Any:
     """调用一个 store 的清理方法；失败返回 {"failed": True, ...}（不抛）。"""
     if store is None:
         return None
@@ -202,7 +217,7 @@ def _run_cleanup(store: Any, method: str, args: tuple, label: str) -> Any:
     if fn is None:
         return {"failed": True, "store": label, "message": f"{label} 无 {method}"}
     try:
-        result = fn(*args)
+        result = fn(*args, **(kwargs or {}))
     except Exception as e:                   # noqa: BLE001 — 清理失败不该拖垮维护
         return {"failed": True, "store": label, "message": str(e)}
     # run_store.cleanup 返回 dict（按表计数）；其余返回行数 int。

@@ -1,4 +1,4 @@
-"""SQLite 并发初始化收口：WAL 切换与加列两处竞态的忙等/重试。
+"""SQLite 并发初始化收口：加列竞态的幂等处理。
 
 两个都是**首建期**竞态，只在"两个进程同时第一次建同一批库"时现形，
 因此单进程测试与隔离跑都看不见——CI 的 3.14 腿在全量负载下命中过
@@ -6,10 +6,13 @@
 两进程 × 80 轮同建四库，命中 3 次 `database is locked` + 1 次
 `duplicate column name: owner_pid`。
 
-1. **WAL 切换不走 busy handler**：SQLite 官方文档明示 `PRAGMA
-   journal_mode=WAL` 在需要短暂独占锁时遇到竞争会直接返回
-   SQLITE_BUSY（Python 文案 "database is locked"），不看 `busy_timeout`。
-   所以必须自己重试。
+两处竞态的分工：
+
+1. **WAL 切换不走 busy handler**（切模式需短暂独占锁，裸切遇竞争直接
+   SQLITE_BUSY，与 timeout 无关）——实现已下沉到 artesian.sqlite_util
+   （底座层本土：分层门禁禁 artesian 反向依赖主仓包，见
+   tests/test_layering）；本模块保留同名 re-export，db_backend /
+   message_store 等调用面不变。
 2. **`ALTER TABLE ... ADD COLUMN` 的 check-then-act**：两个进程都按
    `PRAGMA table_info` 判断"列不存在"，然后都执行 ALTER，后到者拿
    "duplicate column name"。目标状态其实已达成，吞掉这个错误即可。
@@ -18,12 +21,8 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import time
 
-#: WAL 重试次数与退避（首建期竞争窗口极短，8 次 × 0.05s 起步足够）
-WAL_RETRY_ATTEMPTS = 8
-WAL_RETRY_BASE_DELAY = 0.05
-WAL_RETRY_MAX_DELAY = 1.0
+from artesian.sqlite_util import enable_wal as enable_wal  # 侧重导出：调用面不变
 
 #: 标识符白名单：PRAGMA/ALTER 的插值点无法参数化（SQL 标识符不支持占位符），
 #: 这里把"调用方只传字面常量"从约定升级为强制——动态拼出的表名/列名在这里
@@ -39,27 +38,6 @@ def _checked(kind: str, value: str, pattern: re.Pattern[str]) -> str:
         raise ValueError(
             f"sqlite_util: {kind} 必须是字面常量，不接受动态拼出的值: {value!r}")
     return value
-
-
-def enable_wal(conn: sqlite3.Connection, attempts: int = WAL_RETRY_ATTEMPTS) -> None:
-    """带重试地切换到 WAL 模式。
-
-    非锁类错误（如库损坏）立即抛出；锁类错误退避重试，耗尽后仍抛
-    ——"没切成 WAL"必须是可见故障，不许静默降级。
-    """
-    delay = WAL_RETRY_BASE_DELAY
-    for attempt in range(1, attempts + 1):
-        try:
-            conn.execute("PRAGMA journal_mode=WAL")
-            return
-        except sqlite3.OperationalError as e:
-            msg = str(e).lower()
-            if "locked" not in msg and "busy" not in msg:
-                raise
-            if attempt == attempts:
-                raise
-            time.sleep(delay)
-            delay = min(delay * 2, WAL_RETRY_MAX_DELAY)
 
 
 def column_names(conn: sqlite3.Connection, table: str) -> set:

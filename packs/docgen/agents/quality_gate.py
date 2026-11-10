@@ -43,7 +43,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "2.0"
 AGENT_DESC = "质量门禁 Agent v2 - Profile 模板驱动、可插拔评分"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 40
 INPUT_TOPICS = ["writer.done", "quality_gate.check", "quality_gate.input"]
 OUTPUT_TOPICS = ["quality_gate.done", "quality_gate.failed"]

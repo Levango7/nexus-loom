@@ -195,7 +195,7 @@ jobs:
 
       - name: Docker build validation
         run: |
-          docker build -t doc-pipeline:ci .
+          docker build -t nexusloom:ci .
           echo "DOCKER BUILD OK"
 
   # 这门此前只在人肉执行时才算数：#93 给前端加了 GET /api/schedules 而门里没补 mock，

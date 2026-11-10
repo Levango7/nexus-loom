@@ -39,7 +39,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "2.0"
 AGENT_DESC = "增强型内容检索 Agent - 多引擎、智能缓存、质量评分"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 10
 INPUT_TOPICS = ["researcher.input", "researcher.search"]
 OUTPUT_TOPICS = ["researcher.done", "researcher.progress", "researcher.partial"]

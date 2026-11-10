@@ -23,7 +23,7 @@ AGENT_NAME = "requirements_analyzer"
 SANDBOX_TRUSTED = True
 AGENT_VERSION = "1.0"
 AGENT_DESC = "需求分析器 - 意图识别 + 结构化 DocumentSpec 生成"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 5
 # 仅订阅自己的输入主题；不可订阅 researcher.input 等下游节点主题，
 # 否则会经总线收到发给其他 agent 的请求

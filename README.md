@@ -187,6 +187,7 @@ for art in client.artifacts(task["id"]):
 | `loom pack new <name>` | 生成新 pack 骨架（目录 + 模板文件；只生成，不注册不校验） |
 | `loom plugin list` | 列出全部 Agent / 插件（含来源标记） |
 | `loom demo` | 离线体验：沙盒里跑一次完整交付（无网络无 Key；沙盒建在 cwd 下） |
+| `loom reconcile` | 只读对账报告：列队列×投影的 stale-running 漂移（三类）+ 最后事件时间；不自动杀进程、不写库 |
 
 **其余参数**（服务/运维开关保持 flag）：
 
@@ -1148,15 +1149,30 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3874 个测试本机全绿**（`3874 passed, 24 skipped, 6 deselected`，2026-11-10 按 +15 条
+**3916 个测试本机全绿**（`3916 passed, 24 skipped, 6 deselected`，2026-11-10 按 +15 条
 （T3 第三批：主题绑定 + 引用可追溯 + 空查询同拒三条裁决，
-`tests/test_writer.py` +7；`tests/test_fidelity_gate.py` +8）自 3859 推为；
+`tests/test_writer.py` +7；`tests/test_fidelity_gate.py` +8）自 3901 推为；
 2026-11-10 按 +3 条
 （T3 第二批窄边界：有 Key 但重构不可用时两条 web 素材路径拒绝回退拼贴，
 `tests/test_writer.py` +2；拒绝稿入门禁占位标记判据，`tests/test_fidelity_gate.py` +1）
-自 3856 推为；2026-11-10 按 +1 条
+自 3898 推为；2026-11-10 按 +1 条
 （T3 治本批：keyless 拒绝稿入门禁占位标记判据，`tests/test_fidelity_gate.py` +1；
-`test_writer.py` 三处旧契约断言按裁决改写、不增减计数）自 3855 推为；2026-11-09 按 +21 条
+`test_writer.py` 三处旧契约断言按裁决改写、不增减计数）自 3897 推为；
+2026-11-11 按 +4 条
+（KnowledgeBase 首建切 WAL 并发判据：持锁首建重试入 wal/护栏正例/形态钉死（AST 禁
+loom_core + 本土 enable_wal + 实现唯一）/双进程首建零异常；判据文件
+`tests/test_kb_wal_init.py`）自 3893 同 skipped 集推为；2026-11-11 按 +12 条
+（A7 只读对账报告判据：三类漂移逐行命中 + ①字段细核（ROW_KEYS 键序/最后事件时间取
+max/owner_pid 两变体）+ 负控不报 + 只读性实证（跑前后库零变化）+ CLI 人类/JSON 双通道
++ 动词翻译；判据文件 `tests/test_reconcile_report.py`）自 3881 同 skipped 集推为；2026-11-10 按 +16 条
+（C-22b 编排器尾部臂钉死：异步空层结算/执行器假/stop_event/占位警告/台账拒收守卫/
+checkpoint OSError/交付站警告 15 臂 + 同步执行失败臂；`TYPE_CHECKING` 加 no-cover pragma；
+16 钉杀 11 变异；判据文件 `tests/test_pipeline_coverage.py`）自 3865 同 skipped 集推为；2026-11-10 按 +4 条
+（C-21 worker 空转超时确定性：假时钟+`sleep_fn` 注入，4 钉杀 5 变异；判据文件
+`tests/test_worker_idle_timeout.py`）自 3861 同 skipped 集推为；2026-11-10 按 +6 条
+（L4-02 GC 跨库口径：`close_run` 同事务结清待批 + max_runs 双判据接满 cost/quality
+两库 + `run_ids` 跨库联动删；判据文件 `tests/test_maintenance.py` +
+`tests/test_runstore_approvals.py`；+1 条为 cancel 路径结清置 consumed 的钉）自 3855 同 skipped 集推为；2026-11-09 按 +21 条
 （#120 L4-01 运行级指标盖章：成本归属 ContextVar 作用域 + `quality_runs` 总分表 +
 活路/补账两路 `close_run` 盖章；读侧改造：按调用时刻的规范路径短构造 store、读完即关、
 绝不碰进程级单例；判据文件 `tests/test_run_metrics_stamping.py`）自 3834 同 skipped 集推为；同日按 +8 条

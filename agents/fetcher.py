@@ -46,7 +46,7 @@ CONFIG_SCHEMA = {
 }
 AGENT_VERSION = "1.0"
 AGENT_DESC = "知识内容获取器 - 下载、提取正文、保存到本地、质量识别"
-AGENT_AUTHOR = "doc-pipeline"
+AGENT_AUTHOR = "loom"
 AGENT_PRIORITY = 20
 INPUT_TOPICS = ["fetcher.input", "researcher.done"]
 OUTPUT_TOPICS = ["fetcher.done", "fetcher.progress"]

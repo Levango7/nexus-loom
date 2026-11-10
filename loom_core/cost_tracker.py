@@ -269,8 +269,14 @@ class CostTracker:
         return data
 
     def cleanup(self, max_age_days: int = 90, max_rows: int = 0,
-                now: float | None = None) -> int:
-        """清理过期记录（双判据并集；0 的语义与 TaskQueue 同口径）。"""
+                now: float | None = None,
+                run_ids: set[str] | None = None) -> int:
+        """清理过期记录（双判据并集；0 的语义与 TaskQueue 同口径）。
+
+        `run_ids`：按 task_id 删指定运行的行（跨库联动——runs.db 删行时
+        cost.db 的归属行同行删，不留指向已删运行的悬空行；判据独立于
+        年龄/数量两条，空集合即不启用）。
+        """
         now_ts = now if now is not None else time.time()
         cutoff = now_ts - max_age_days * 86400
         with self._conn() as conn:
@@ -282,6 +288,16 @@ class CostTracker:
                     "DELETE FROM cost_log WHERE id NOT IN (SELECT id FROM cost_log "
                     "ORDER BY timestamp DESC LIMIT ?)", (max_rows,))
                 dropped += cur.rowcount
+            if run_ids:
+                ids = sorted(run_ids)
+                for i in range(0, len(ids), 500):
+                    chunk = tuple(ids[i:i + 500])
+                    marks = ", ".join(["?"] * len(chunk))
+                    # nosec B608：marks 是按集合长度生成的纯 "?" 占位符，值全部走参数
+                    cur = conn.execute(
+                        f"DELETE FROM cost_log WHERE task_id IN ({marks})",  # nosec B608
+                        chunk)
+                    dropped += cur.rowcount
         return dropped
 
     def close(self) -> None:

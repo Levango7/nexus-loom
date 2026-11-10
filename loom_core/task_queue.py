@@ -421,6 +421,18 @@ class TaskQueue:
                 ).fetchall()
             return [self._row_to_dict(r) for r in rows]
 
+    def owner_pids(self) -> dict[str, int]:
+        """task_id → owner_pid 全量映射（只读）。
+
+        list_all() 的行形状（_ROW_COLS）不含 owner_pid；对账报告（A7）要按
+        owner_pid 判存活，单独读这一列，避免为了一列改全量行形状牵连所有
+        消费者。
+        """
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT task_id, owner_pid FROM task_queue").fetchall()
+        return {r[0]: int(r[1] or 0) for r in rows}
+
     def list_pending(self) -> list[dict]:
         """列出所有 pending 任务"""
         return self.list_all(status="pending", limit=1000)
