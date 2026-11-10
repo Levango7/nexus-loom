@@ -187,6 +187,7 @@ for art in client.artifacts(task["id"]):
 | `loom pack new <name>` | 生成新 pack 骨架（目录 + 模板文件；只生成，不注册不校验） |
 | `loom plugin list` | 列出全部 Agent / 插件（含来源标记） |
 | `loom demo` | 离线体验：沙盒里跑一次完整交付（无网络无 Key；沙盒建在 cwd 下） |
+| `loom reconcile` | 只读对账报告：列队列×投影的 stale-running 漂移（三类）+ 最后事件时间；不自动杀进程、不写库 |
 
 **其余参数**（服务/运维开关保持 flag）：
 
@@ -1145,7 +1146,10 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3881 个测试本机全绿**（`3881 passed, 24 skipped, 6 deselected`，2026-11-10 按 +16 条
+**3893 个测试本机全绿**（`3893 passed, 24 skipped, 6 deselected`，2026-11-11 按 +12 条
+（A7 只读对账报告判据：三类漂移逐行命中 + ①字段细核（ROW_KEYS 键序/最后事件时间取
+max/owner_pid 两变体）+ 负控不报 + 只读性实证（跑前后库零变化）+ CLI 人类/JSON 双通道
++ 动词翻译；判据文件 `tests/test_reconcile_report.py`）自 3881 同 skipped 集推为；2026-11-10 按 +16 条
 （C-22b 编排器尾部臂钉死：异步空层结算/执行器假/stop_event/占位警告/台账拒收守卫/
 checkpoint OSError/交付站警告 15 臂 + 同步执行失败臂；`TYPE_CHECKING` 加 no-cover pragma；
 16 钉杀 11 变异；判据文件 `tests/test_pipeline_coverage.py`）自 3865 同 skipped 集推为；2026-11-10 按 +4 条
