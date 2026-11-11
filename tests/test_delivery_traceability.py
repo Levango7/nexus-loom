@@ -101,6 +101,29 @@ class TestRecordCarriesTraceability:
         assert rec["output_sha256"] == hashlib.sha256(
             Path(task.output_path).read_bytes()).hexdigest()
 
+    def test_output_bytes_matches_the_file_on_disk(self, orch, tmp_path):
+        task, _plan_obj = _run_demo(orch, tmp_path, "trace-rec-bytes")
+        from loom_core.deliveries import DeliveryLedger
+
+        rec = DeliveryLedger().get("trace-rec-bytes")
+        assert rec["output_bytes"] == len(Path(task.output_path).read_bytes())
+
+    def test_output_bytes_tristate_when_file_is_gone_or_never_declared(self, orch,
+                                                                       tmp_path):
+        """None=没记录（无 output_path）；-1=声明了路径但文件读不到。
+
+        与读侧 fmtBytes 的三态同一口径：把"文件丢了"写成 0 或 None，
+        下载面就会把"曾经有产物"说成"空文件/没产物"。
+        """
+        task, plan = _run_demo(orch, tmp_path, "trace-rec-tri")
+        task.output_path = str(tmp_path / "gone.md")
+        rec = orch._build_delivery_record(task, plan)
+        assert rec["output_bytes"] == -1
+        assert rec["output_sha256"] == "", "文件丢了时 sha 仍是空串（A2 口径不变）"
+        task.output_path = ""
+        rec = orch._build_delivery_record(task, plan)
+        assert rec["output_bytes"] is None
+
     def test_fingerprint_fields_are_present_and_shaped(self, orch, tmp_path):
         _task, plan = _run_demo(orch, tmp_path, "trace-rec-3")
         from loom_core.deliveries import DeliveryLedger
@@ -154,11 +177,13 @@ class TestOverHTTP:
             item = next(d for d in body["deliveries"]
                         if d["run_id"] == "trace-http-1")
             assert item["output_sha256"] == expected, item
+            assert item["output_bytes"] == len(Path(task.output_path).read_bytes()), item
 
             code, detail = self._get(base + "/api/deliveries/trace-http-1")
             assert code == 200, detail
             delivery = detail["delivery"]
             assert delivery["output_sha256"] == expected
+            assert delivery["output_bytes"] == item["output_bytes"]
             assert len(delivery["topology_hash"]) == 12
             assert delivery["config_hashes"], delivery
             with_digests = [n for n in delivery["nodes"] if n.get("artifacts")]
@@ -184,6 +209,7 @@ class TestOverHTTP:
             item = next(d for d in body["deliveries"]
                         if d["run_id"] == "trace-nodigest")
             assert item["output_sha256"] == "", item
+            assert item["output_bytes"] is None, "老行没有这键 ⇒ null（未记录），不是 0"
         finally:
             self._stop(api)
 
@@ -331,6 +357,7 @@ class TestConsoleApiContract:
     def test_traceability_fields_are_all_presented(self):
         region = _console_region()
         for token in ("item.output_sha256", "delivery.output_sha256",
+                      "delivery.output_bytes",
                       "delivery.topology_hash", "delivery.config_hashes",
                       "n.artifacts", "arts[k].sha256", "arts[k].bytes"):
             assert token in region, f"控制台没呈现追溯字段 {token}"

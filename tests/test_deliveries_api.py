@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -282,6 +283,131 @@ class TestDeliveriesHTTP:
         assert code == 404, body
 
 
+# ─── 1b. 交付物下载 ─────────────────────────────────────
+
+def _raw_req(method: str, url: str, token: str | None = None, timeout: float = 20.0):
+    """下载判据要的是原始字节与响应头，不是 JSON——单独一条裸读法。"""
+    req = urllib.request.Request(url, method=method)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, dict(resp.headers), resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read()
+
+
+def _attach_output(run_id: str, path: Path) -> None:
+    """给已存在的账本行补上 output_path（保留其余字段与投影归属）。"""
+    rec = DeliveryLedger().get(run_id)
+    assert rec is not None, f"账本里没有 {run_id}，夹具先坏了"
+    rec["output_path"] = str(path)
+    DeliveryLedger().record(rec)
+
+
+class TestDeliveryDownloadHTTP:
+    """`GET /api/deliveries/<run_id>/download`：文件本体，可见性与明细同口。"""
+
+    def test_download_streams_the_recorded_file_bytes(self, served, tmp_path):
+        base, _orch = served
+        out = tmp_path / "out.md"
+        payload = "# 交付物\n\n正文按字节对账。\n".encode("utf-8")
+        out.write_bytes(payload)
+        _attach_output("da-alice", out)
+        code, headers, body = _raw_req(
+            "GET", f"{base}/api/deliveries/da-alice/download", TOK_ALICE)
+        assert code == 200, body
+        assert body == payload, "下载内容必须与磁盘文件逐字节一致"
+        assert headers.get("Content-Length") == str(len(payload))
+        disp = headers.get("Content-Disposition", "")
+        assert disp.startswith("attachment;"), disp
+        assert "out.md" in disp, disp
+
+    def test_download_without_token_is_401(self, served, tmp_path):
+        base, _orch = served
+        out = tmp_path / "out.md"
+        out.write_bytes(b"x")
+        _attach_output("da-alice", out)
+        code, _headers, _body = _raw_req(
+            "GET", f"{base}/api/deliveries/da-alice/download")
+        assert code == 401
+
+    def test_cross_tenant_download_is_indistinguishable_from_missing(self, served,
+                                                                     tmp_path):
+        """越权与不存在同形——下载口不能比明细口多漏一点存在性。"""
+        base, _orch = served
+        out = tmp_path / "out.md"
+        out.write_bytes(b"alice-only")
+        _attach_output("da-alice", out)
+        code_cross, _h1, body_cross = _raw_req(
+            "GET", f"{base}/api/deliveries/da-alice/download", TOK_BOB)
+        code_missing, _h2, body_missing = _raw_req(
+            "GET", f"{base}/api/deliveries/da-nope/download", TOK_BOB)
+        assert code_cross == code_missing == 404, (code_cross, code_missing)
+        assert body_cross == body_missing
+
+    def test_missing_output_file_is_404_not_500(self, served, tmp_path):
+        """账本行还在、文件已被清理：这是"没有可下载的东西"，不是服务出错。"""
+        base, _orch = served
+        _attach_output("da-alice", tmp_path / "gone.md")
+        code, _headers, body = _raw_req(
+            "GET", f"{base}/api/deliveries/da-alice/download", TOK_ALICE)
+        assert code == 404, body
+        assert json.loads(body)["error"] == "delivery output not on disk"
+
+    def test_row_without_output_path_is_404(self, served):
+        base, _orch = served
+        code, _headers, body = _raw_req(
+            "GET", f"{base}/api/deliveries/da-bob/download", TOK_BOB)
+        assert code == 404, body
+        assert json.loads(body)["error"] == "delivery has no output file"
+
+    def test_empty_file_downloads_as_zero_bytes(self, served, tmp_path):
+        """空文件是 0 字节的 200，不是 404——"空"与"没有"必须可区分。"""
+        base, _orch = served
+        out = tmp_path / "empty.md"
+        out.write_bytes(b"")
+        _attach_output("da-alice", out)
+        code, headers, body = _raw_req(
+            "GET", f"{base}/api/deliveries/da-alice/download", TOK_ALICE)
+        assert code == 200, body
+        assert body == b""
+        assert headers.get("Content-Length") == "0"
+
+    def test_non_ascii_filename_is_rfc5987_encoded(self, served, tmp_path):
+        base, _orch = served
+        out = tmp_path / "交付 报告.md"
+        out.write_bytes("中文文件名".encode("utf-8"))
+        _attach_output("da-alice", out)
+        code, headers, _body = _raw_req(
+            "GET", f"{base}/api/deliveries/da-alice/download", TOK_ALICE)
+        assert code == 200
+        disp = headers.get("Content-Disposition", "")
+        assert "filename*=UTF-8''" in disp, disp
+        assert quote("交付 报告.md") in disp, disp
+        ascii_part = disp.split("filename*=")[0]
+        assert ascii_part.isascii(), f"ASCII 回退名里混进了非 ASCII：{ascii_part!r}"
+        assert "\r" not in disp and "\n" not in disp
+
+    def test_unreadable_ledger_is_503(self, served, monkeypatch):
+        base, _orch = served
+
+        def _boom(self, run_id: str):
+            raise RuntimeError("deliveries.db 被锁住")
+
+        monkeypatch.setattr(DeliveryLedger, "get", _boom)
+        code, _headers, body = _raw_req(
+            "GET", f"{base}/api/deliveries/da-alice/download", TOK_OPS)
+        assert code == 503, body
+        assert json.loads(body)["error"] == "deliveries unavailable"
+
+    def test_bad_run_id_is_400_before_any_lookup(self, served):
+        base, _orch = served
+        code, _headers, _body = _raw_req(
+            "GET", f"{base}/api/deliveries/..%2F..%2Fetc/download", TOK_OPS)
+        assert code == 400, "路径里的非法 id 要挡在解析之前"
+
+
 # ─── 2. 锁巡检 ────────────────────────────────────────
 
 class TestLocksHTTP:
@@ -483,6 +609,7 @@ class TestSpecParity:
     #: 栽过的那个形状。
     ROUTES = {"/api/deliveries": '== "/api/deliveries"',
               "/api/deliveries/{run_id}": 'startswith("/api/deliveries/")',
+              "/api/deliveries/{run_id}/download": 'endswith("/download")',
               "/api/locks": '== "/api/locks"'}
 
     def test_each_spec_path_is_both_routed_and_documented(self):
@@ -495,6 +622,7 @@ class TestSpecParity:
             assert needle in source, f"{path} 只在规范里，admin_api 没有对应路由/handler"
         assert callable(AdminHandler._handle_deliveries)
         assert callable(AdminHandler._handle_delivery_detail)
+        assert callable(AdminHandler._handle_delivery_download)
         assert callable(AdminHandler._handle_locks)
 
     def test_new_verbs_are_listed_in_the_openapi_get_surface(self):
@@ -503,4 +631,7 @@ class TestSpecParity:
         paths = generate_spec()["paths"]
         assert paths["/api/deliveries"]["get"]["summary"]
         assert paths["/api/deliveries/{run_id}"]["get"]["parameters"][0]["name"] == "run_id"
+        dl = paths["/api/deliveries/{run_id}/download"]["get"]
+        assert dl["parameters"][0]["name"] == "run_id"
+        assert set(dl["responses"]) == {"200", "404", "503"}
         assert paths["/api/locks"]["get"]["parameters"][0]["name"] == "pipeline"

@@ -277,6 +277,7 @@ PAIRS = [
     Pair(".logs-table .log-level.error", "card", 9.1, 700, ".logs-table .log-level", "日志级别"),
     Pair(".newtask-msg", "card", 10.5, 400, None, "提交成功反馈"),
     Pair(".newtask-msg.is-error", "card", 10.5, 400, ".newtask-msg", "提交失败反馈"),
+    Pair(".newtask-schema .nt-req", "card", 10.5, 400, ".newtask-schema .nt-field > label", "声明表单必填标记"),
     Pair(".live-label", "raised_on_card", 9.8, 400, None, "实时进度标题"),
     # ---- 任务 / 运行详情 ----
     Pair(".task-id-link", "card", 11.2, 400, ".tasks-table", "任务 ID 链接"),
@@ -346,6 +347,7 @@ BORDER_EXEMPT = {
     ".newtask-form textarea": "有可见 <label for>（index.html），边界非唯一识别线索",
     ".newtask-form select": "同上：可见 label 识别该控件",
     '.newtask-form input[type="text"]': "同上：可见 label 识别该控件",
+    '.newtask-form input[type="number"]': "同上：可见 label 识别该控件（声明表单数字输入）",
     ".header": "页头底分隔线，纯装饰（结构由栅格承载）",
     ".tasks-table thead th": "表头底分隔线，纯装饰（结构由行列本身承载）",
     ".card": "卡片容器边界，非操作件（实务主流口径不计）",

@@ -104,8 +104,11 @@
     </div>
     <div class="card-body">
       <form id="newtask-form" class="newtask-form" novalidate>
-        <label for="nt-query">Query（文档主题）</label>
-        <textarea id="nt-query" rows="2" placeholder="例如：Python asyncio 并发编程指南" required aria-describedby="nt-msg"></textarea>
+        <div id="nt-freeform">
+          <label for="nt-query">Query（文档主题）</label>
+          <textarea id="nt-query" rows="2" placeholder="例如：Python asyncio 并发编程指南" required aria-describedby="nt-msg"></textarea>
+        </div>
+        <div id="nt-schema" class="newtask-schema" hidden></div>
         <div class="newtask-row">
           <label for="nt-pipeline">Pipeline
             <select id="nt-pipeline"></select>

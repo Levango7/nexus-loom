@@ -525,6 +525,17 @@ def _ops_paths() -> dict:
                               "404": {"description": "账本里没有这条，或不属于你（同一个答案）"}},
             },
         },
+        "/api/deliveries/{run_id}/download": {
+            "get": {
+                "summary": "下载交付物文件本体（attachment；可见性与明细同口，"
+                           "越权/不存在/无落盘产物/文件已不在都是 404）",
+                "parameters": [{"name": "run_id", "in": "path", "required": True,
+                               "schema": {"type": "string"}}],
+                "responses": {"200": {"description": "交付物文件（Content-Disposition: attachment）"},
+                              "404": {"description": "没有这条/不属于你/没有落盘产物/文件已不在"},
+                              "503": {"description": "账本读不动"}},
+            },
+        },
         "/api/locks": {
             "get": {
                 "summary": "锁巡检。scope=current files：比的是当前 YAML 与当前锁，"

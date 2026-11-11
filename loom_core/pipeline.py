@@ -1751,14 +1751,20 @@ class PipelineOrchestrator:
 
         # 产物 sha256（A2）：输出文件的内容哈希。文件不存在时给空串——
         # "没产出"与"产出了但文件丢了"要可区分。
+        # output_bytes 沿用读侧 fmtBytes 的三态：None=没记录（无 output_path），
+        # -1=声明了落盘路径但文件读不到，>=0=收尾时实测字节数。
         output_sha256 = ""
+        output_bytes = None
         if task.output_path:
+            output_bytes = -1
             try:
                 from pathlib import Path
                 p = Path(task.output_path)
                 if p.is_file():
                     import hashlib
-                    output_sha256 = hashlib.sha256(p.read_bytes()).hexdigest()
+                    data = p.read_bytes()
+                    output_sha256 = hashlib.sha256(data).hexdigest()
+                    output_bytes = len(data)
             except OSError:
                 pass
 
@@ -1773,6 +1779,7 @@ class PipelineOrchestrator:
             "duration_sec": round(finished - started, 3) if finished else None,
             "output_path": task.output_path,
             "output_sha256": output_sha256,
+            "output_bytes": output_bytes,
             "error": task.error or "",
             "topology_hash": topology_hash,
             "config_hashes": config_hashes,
