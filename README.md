@@ -1149,7 +1149,9 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3916 个测试本机全绿**（`3916 passed, 24 skipped, 6 deselected`，2026-11-10 按 +15 条
+**3920 个测试本机全绿**（`3920 passed, 24 skipped, 6 deselected`，2026-11-11 按 +4 条
+（空计划结算守卫判据：异步空层结算 100/异步空 levels 列表入口 WARN/同步空层同一守卫/
+非退化两层数学不变；判据文件 `tests/test_empty_plan_settlement.py`）自 3916 同 skipped 集推为；2026-11-10 按 +15 条
 （T3 第三批：主题绑定 + 引用可追溯 + 空查询同拒三条裁决，
 `tests/test_writer.py` +7；`tests/test_fidelity_gate.py` +8）自 3901 推为；
 2026-11-10 按 +3 条

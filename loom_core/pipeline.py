@@ -1288,6 +1288,9 @@ class PipelineOrchestrator:
     def _execute_plan(self, task: PipelineTask, plan: ExecutionPlan, input_file: str) -> None:
         """执行计划的所有层级（run_plan 的内核，拆分为独立方法便于测试）。"""
         total_nodes = plan.node_count
+        if total_nodes == 0:
+            self._log("warning", "空计划（node_count=0）：无节点可执行，按空转处理直接结算",
+                      task_id=task.id, pipeline=plan.pipeline_name)
         completed = 0
 
         for _level_idx, level in enumerate(plan.levels):
@@ -1330,7 +1333,7 @@ class PipelineOrchestrator:
                 # 整层都是闸门（已放行）：本层无事可执行，直接推进
                 completed += level_total
                 task.current_step = completed
-                task.progress = int((completed / total_nodes) * 100)
+                task.progress = int((completed / total_nodes) * 100) if total_nodes else 100
                 self._runstore_nodes(task, level_all)
                 self._save_checkpoint(task, full_state=True)
                 continue
@@ -1365,7 +1368,7 @@ class PipelineOrchestrator:
 
             completed += level_total
             task.current_step = completed
-            task.progress = int((completed / total_nodes) * 100)
+            task.progress = int((completed / total_nodes) * 100) if total_nodes else 100
             self._merge_pooled_results(task)
             self._runstore_nodes(task, level_all)
             self._save_checkpoint(task, full_state=True)
@@ -1587,6 +1590,9 @@ class PipelineOrchestrator:
 
         task.started_at = time.time()
         total_nodes = plan.node_count
+        if total_nodes == 0:
+            self._log("warning", "空计划（node_count=0）：无节点可执行，按空转处理直接结算",
+                      task_id=task.id, pipeline=plan.pipeline_name)
         self._runstore_open(task, plan, input_file,
                             trigger="stream-resume" if resume else "stream")
 
@@ -1641,7 +1647,7 @@ class PipelineOrchestrator:
                 if not level:
                     completed += level_total
                     task.current_step = completed
-                    task.progress = int((completed / total_nodes) * 100)
+                    task.progress = int((completed / total_nodes) * 100) if total_nodes else 100
                     self._runstore_nodes(task, level_all)
                     self._save_checkpoint(task, full_state=True)
                     continue
@@ -1662,7 +1668,7 @@ class PipelineOrchestrator:
 
                 completed += level_total
                 task.current_step = completed
-                task.progress = int((completed / total_nodes) * 100)
+                task.progress = int((completed / total_nodes) * 100) if total_nodes else 100
 
                 # 池化节点结果合并（与 run_plan 共用同一实现）
                 self._merge_pooled_results(task)
