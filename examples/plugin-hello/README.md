@@ -1,4 +1,4 @@
-# doc-pipeline-plugin-hello —— 外部插件示例
+# loom-plugin-hello —— 外部插件示例
 
 演示 `loom.agents` entry_points 接入：**装好即被发现 / 注册 / 执行，
 本仓零改动**（product-spec §2.1 验收线第 2 条）。
@@ -20,7 +20,7 @@ python run.py --list-agents        # 会看到 char_stats 带 [entry_point:char_
 ```
 
 之后就能把它当任意流水线的节点用（`pipelines/*.yaml` 的 `agents:` 里写
-`name: char_stats`）；不想要了就 `pip uninstall doc-pipeline-plugin-hello`。
+`name: char_stats`）；不想要了就 `pip uninstall loom-plugin-hello`。
 
 ## 验证（与 CI 同款判据）
 
