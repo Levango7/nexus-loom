@@ -860,6 +860,7 @@ python run.py --replay-run <run_id>                  # 按 id 补一条
 |----|--------|
 | `GET /api/deliveries` | 最近交付（`?limit=`，默认 50、夹到 200），逐行带 `projection` 健康位与交付物 `output_sha256` |
 | `GET /api/deliveries/<run_id>` | 整条结构化载荷：逐节点状态/耗时/`artifact_keys` |
+| `GET /api/deliveries/<run_id>/download` | 下载该跑的交付物文件（`attachment`，文件名走 RFC 5987）；可见性与 detail 同口，越权/不存在/文件不在盘上都是 404 |
 | `GET /api/locks` | 逐流水线锁巡检（`?pipeline=<name>` 只看一条） |
 
 两条口径要说在前面，别让响应被读成别的含义：
@@ -903,6 +904,12 @@ curl -X POST localhost:8080/api/workflows/mypipe/runs \
      -H "Authorization: Bearer $ADMIN_API_KEY" -d '{"inputs": {"topic": "云成本"}}'
 curl localhost:8080/api/workflows/mypipe/inputs     # 读回声明，客户端据此生成表单
 ```
+
+控制台的新建任务面就按这份声明渲染（2026-11-11，T6）：选中声明了 `inputs` 的流水线时，
+自由文本框让位给逐字段表单（enum/bool 出下拉、数值出带范围步进、list/dict 出 JSON 框，
+`default` 预填、必填留空在提交前就地拦截），提交走 `body.inputs`；没有声明的流水线保持
+自由文本 `query` 不变。客户端校验只为即时反馈，服务端 `prepare_inputs`/`gate_freeform`
+仍是唯一权威。
 
 支持的 keyword 是**声明式子集**（`type`/`required`/`enum`/`pattern`/`minimum`/`maximum`/
 `minLength`/`maxLength`/`default`/`items`/`properties`/`additionalProperties`），不是完整
@@ -1149,7 +1156,12 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3920 个测试本机全绿**（`3920 passed, 24 skipped, 6 deselected`，2026-11-11 按 +4 条
+**3932 个测试本机全绿**（`3932 passed, 24 skipped, 6 deselected`，2026-11-12 按 +12 条
+（T6 控制台 UI 批：交付物下载端点 9 条（`tests/test_deliveries_api.py`：逐字节流 +
+Content-Length/401/越权与不存在同 404/文件不在盘 404/无路径 404/空文件零字节/中文名
+RFC 5987/账本读不动 503/非法 id 先 400）+ `output_bytes` 写侧三态 2 条
+（`tests/test_delivery_traceability.py`）+ 浏览器门 inputs mock 与后端声明同形 1 条
+（`tests/test_browser_gate.py`））自 3920 同 skipped 集推为；2026-11-11 按 +4 条
 （空计划结算守卫判据：异步空层结算 100/异步空 levels 列表入口 WARN/同步空层同一守卫/
 非退化两层数学不变；判据文件 `tests/test_empty_plan_settlement.py`）自 3916 同 skipped 集推为；2026-11-10 按 +15 条
 （T3 第三批：主题绑定 + 引用可追溯 + 空查询同拒三条裁决，

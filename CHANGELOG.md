@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added（2026-11-11，T6 控制台 UI 批：声明式输入表单 + 交付物下载）
+
+- **控制台新建任务面按声明渲染表单**：选中声明了 `inputs` 的流水线时，自由文本框让位给
+  逐字段表单（enum/bool 出下拉、int/float 出带范围步进的数字框、list/dict 出 JSON 框，
+  `default` 预填、必填留空在提交前就地拦截），提交走 `body.inputs`；没有声明的流水线
+  保持自由文本 `query` 不变。此前控制台恒发 `query`，带声明的流水线被 `gate_freeform`
+  必拒 400——这类流水线在控制台等于没有入口（A3 第三小句的前提此前已交付，表单本体
+  本批落地）。客户端校验只为即时反馈，服务端 `prepare_inputs`/`gate_freeform` 仍是
+  唯一权威；提交失败的 400 字段级错误（`fields[]`）逐字段拼进提示。
+- **`GET /api/deliveries/<run_id>/download`**：交付物文件本体流式下载
+  （`Content-Disposition: attachment`，ASCII 回退名消毒 + `filename*=UTF-8''` RFC 5987
+  双形式）。可见性与明细同口（`_delivery_item` 裁决，越权与不存在同一个 404）；
+  无落盘产物 / 文件已不在盘上都是 404 而非 500，账本读不动 503。文件路径只取服务端
+  账本的 `output_path`，客户端没有能影响文件选择的输入。控制台明细的「下载交付物」
+  按钮走 fetch 带 Bearer 再 blob 触发（plain `<a href>` 不带 Authorization，配 tokens
+  的部署上必 401），文件名取自 `filename*`，下载后提示拿 sha256 对摘要核。
+- **交付记录新增 `output_bytes`**（写侧 `_build_delivery_record` 收尾实测）：三态
+  `None`=没记录（无 `output_path`，含老行）/ `-1`=声明了路径但文件读不到 / `>=0`=实测
+  字节数，与读侧 `fmtBytes` 同口径；list/detail 响应与控制台明细「字节数」行同步呈现。
+  逐节点产物仍只有摘要（sha256/字节数），明细补一句口径：账本不存产物正文，能下载的
+  是交付物文件。
+- 判据：`test_deliveries_api.py` +9（逐字节流 + Content-Length / 401 / 越权与不存在
+  同 404 同体 / 文件不在 404 / 无路径 404 / 空文件零字节 / 中文名 RFC 5987 且 ASCII 段
+  无 CR/LF / 账本 503 / 非法 id 先 400）、`test_delivery_traceability.py` +2（写侧
+  三态）、`test_browser_gate.py` +1（门里 inputs mock 与后端 `_handle_workflow_inputs`
+  真产出逐字段同形，真 Scheduler 解析对账）；浏览器门 +3 用例（声明表单渲染与 typed
+  提交 / 无声明保持自由文本 / 明细下载取回记录文件名），真 Chrome 16 项 PASS。
+  对比度门登记：`.nt-req` 进 PAIRS（字号来源钉到 label）、数字输入框进 BORDER_EXEMPT。
+  提交树全量：3932 passed / 24 skipped / 6 deselected（22:22；rebase 到 33427b2 后
+  计数链 3916→3920（main 空计划守卫 +4）→3932（T6 +12）实测重驱动；真 Chrome 门
+  16 项 PASS 同批实跑）。
+- 门修复（本批暴露的三个既有坑）：浏览器门配色探针在切主题瞬间量到
+  `#nt-submit` 的 `transition: background 0.2s` 插值中间色（dark 2.80 假红）——
+  测量前注入 `transition: none` 量落定态；`#nt-freeform`/`.newtask-schema` 的作者
+  `display` 压过 UA `[hidden]`，补 `[hidden]` 显式规则（与 `.card[hidden]` 同款）；
+  端点契约门的续段白名单补 `/inputs`、`/download`（拼接链续段，落点由
+  `test_concatenated_endpoints_are_documented` 整条钉住，与 `/nodes/` 同规）。
+
 ### Fixed（2026-11-10，T3 治本批：keyless writer 拒绝把 web 素材拼贴当交付物）
 
 - **writer 无 LLM Key 时不再出厂原文拼贴**：此前 `_fill_section` / `_generate_document`
