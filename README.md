@@ -813,6 +813,9 @@ artifact_keys），但**不给 `result` 正文本**——它从不落盘（投�
 与 `run_store_health()` 的 `incomplete_runs` / `legacy_runs` 把它报出来，`to_dict()` 里
 也有 `projection` 键。**标记优先于"投影里查得到行"**：终态盖章失败时 `runs` 那一行会
 永远停在 `running`，只看有无行会把它读成正常完成。补账工具（重放终态）本批未做。
+**（此句 2026-11-10 收回：补账工具已于 2026-10-25 落地，见下节「看得见就得能处理」——
+`--replay-incomplete` / `--replay-run` + `loom_core/backfill.py`；"本批未做"是 10-24
+Stage 3b 那批的如实描述，工具落地后这句话就过期了，故留痕收回而非就地抹掉。）
 
 > **B8 引擎收敛（2026-10-27）**：`orch.run()` 现在委托给 `run_plan()` 统一引擎执行，
 > legacy 路径不再"按设计缺投影"——它经由 `run_plan()` 写真实 RunStore 投影，`projection`
@@ -1146,7 +1149,16 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3897 个测试本机全绿**（`3897 passed, 24 skipped, 6 deselected`，2026-11-11 按 +4 条
+**3916 个测试本机全绿**（`3916 passed, 24 skipped, 6 deselected`，2026-11-10 按 +15 条
+（T3 第三批：主题绑定 + 引用可追溯 + 空查询同拒三条裁决，
+`tests/test_writer.py` +7；`tests/test_fidelity_gate.py` +8）自 3901 推为；
+2026-11-10 按 +3 条
+（T3 第二批窄边界：有 Key 但重构不可用时两条 web 素材路径拒绝回退拼贴，
+`tests/test_writer.py` +2；拒绝稿入门禁占位标记判据，`tests/test_fidelity_gate.py` +1）
+自 3898 推为；2026-11-10 按 +1 条
+（T3 治本批：keyless 拒绝稿入门禁占位标记判据，`tests/test_fidelity_gate.py` +1；
+`test_writer.py` 三处旧契约断言按裁决改写、不增减计数）自 3897 推为；
+2026-11-11 按 +4 条
 （KnowledgeBase 首建切 WAL 并发判据：持锁首建重试入 wal/护栏正例/形态钉死（AST 禁
 loom_core + 本土 enable_wal + 实现唯一）/双进程首建零异常；判据文件
 `tests/test_kb_wal_init.py`）自 3893 同 skipped 集推为；2026-11-11 按 +12 条

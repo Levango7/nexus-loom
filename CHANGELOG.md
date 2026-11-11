@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed（2026-11-10，T3 治本批：keyless writer 拒绝把 web 素材拼贴当交付物）
+
+- **writer 无 LLM Key 时不再出厂原文拼贴**：此前 `_fill_section` / `_generate_document`
+  把检索到的段落/摘要逐字拼进成品（`packs/docgen/agents/writer.py`），keyless 路径
+  （CI smoke、离线）无重构兜底，FP-1b 的 28.4 KB 样本即产自这条路径。现在两条 web
+  素材路径（文章 / 检索摘要）在无 Key 时改为交付 `degradation.KEYLESS_REFUSAL`
+  降级自述（标题 + 采集计数 + 配置指引），一个字的素材原文都不再进成品。
+- **新占位标记入门禁契约**：`loom_doc/degradation.py` 的 `KEYLESS_REFUSAL` 进
+  `PLACEHOLDER_MARKERS`——keyless 拒绝稿 = 没有交付物，质量门必须判红，否则
+  "拒绝拼贴"会退化成另一种静默绿。KB 路径抽取式草稿按其既有设计契约保留
+  （内容本就叫摘录，非抓取层原文），不在本批范围。
+- 判据：`test_writer.py` 三处旧契约断言按裁决改写（拒绝稿含标记、原文不进正文、
+  参考资料清单不再代替交付物），`test_fidelity_gate.py` 新增拒绝稿命中即红一条；
+  writer/kb/integration/p2 四套 156 条 + pack E2E 32 条全绿。
+- 边界如实写：有 Key 但 prompt 模板为空时 `_restructure_document` 仍返回 None，
+  回退拼贴未堵，留给第二批（引用可追溯）一并处置；`docs/product-spec.md` 的
+  FP-1b 遗留条已按此进度改写。
+
+### Fixed（2026-11-10，T3 第二批窄边界：有 Key 但重构不可用时同样拒绝拼贴）
+
+- **重构返回 None 不得回退拼贴**：有 LLM Key 但 prompt 模板为空/加载失败（或章节
+  生成全灭）时 `_restructure_document` 返回 None，此前两条 web 素材路径
+  （`handle()` 检索摘要、`_build_from_articles` 文章）会把 `_generate_document` /
+  骨架+TF-IDF 的拼贴原样出厂——与 keyless 拼贴同一个病（FP-1b 同源）。现在两个
+  调用点的回退位改为交付 `degradation.RESTRUCTURE_UNAVAILABLE` 拒绝自述，并带
+  `restructure_refused: True` 统计。KB 抽取式草稿按其设计契约保留，不在此列。
+- **新占位标记入门禁契约**：`RESTRUCTURE_UNAVAILABLE` 并入
+  `loom_doc/degradation.py` 的 `PLACEHOLDER_MARKERS`——拒绝稿 = 没有交付物，质量门
+  必须判红，否则"拒绝拼贴"退化成另一种静默绿。
+- 判据：`test_writer.py` +2（文章路径 / 检索摘要路径各一）、`test_fidelity_gate.py`
+  +1（拒绝稿命中即红）；writer/fidelity 两套 109 条全绿，README 计数 3856→3859。
+- 新登记（不修，待裁决）：空 query 时有 Key 仍走拼贴交付（articles 的 TF-IDF
+  填充 / 检索摘要的 `_generate_document` 拼接），keyless 同形状已拒绝——是否同拒
+  属设计问题，留主题相关性/引用可追溯批裁决。
+- 回归修复（批一引入，本批修）：`test_dual_path_parity` 的 legacy 路径无
+  per-node config，keyless 拒绝稿在默认保底判据下判红、YAML 夹具路径（夹具
+  显式关底线）判绿，终态分叉。已按夹具既定裁决把同款底线语义注进 legacy 全局
+  `MOCK_CONFIG`；批一验证面（writer/kb/integration/p2 + pack E2E）漏了这一套，
+  全量复跑方暴露。复跑：parity 2 passed；全量 3859 passed / 24 skipped /
+  6 deselected。
+
+### Fixed（2026-11-11，T4：浏览器门提供方契约进仓）
+
+- `.github/workflows/ci.yml`：`dashboard-browser-gate` job 补浏览器提供方
+  契约注释——Chrome 来自运行器环境（仓外提供、仓内不装），`--channel chrome`
+  按运行器已装频道解析；本 job 只钉 playwright 版本、不执行
+  `playwright install`。运行器不再带 Chrome 时该步直接报错而非静默跳过；
+  处置（补 `playwright install chrome`）与接线判据的放行形态
+  （`--channel` 或 `playwright install` 二选一）一并写在 job 旁。此前该
+  契约只存在于 `tests/test_browser_gate.py` 的失败文案里，仓内无文档。
+- 判据：docs-only，无新增用例；`tests/test_browser_gate.py` 8 条原样通过
+  （接线判据读 ci.yml 断言，注释不影响）；设计锚点 checked=52 mismatched=0。
+
+### Fixed（2026-11-10，T3 第三批：主题绑定 + 引用可追溯 + 空查询同拒）
+
+- **主题相关性与引用可追溯改为结构性判据（设计裁决，走 FP-1 路线）**：主题
+  相关性不做成关键词计数门禁（FP-1 实测已证启发指标在真假样本上无可分离
+  分布，"用这种指标做门禁等于再造一个假绿"），改为两条底线——writer 在
+  stats 报告本次整合的 `query` 与实际读入素材的 `source_urls` 集合，成品须
+  带 `> 主题:` 声明行且与 query 逐字相等、成品里每个 http(s) 链接必须落在
+  `source_urls` 集合内；命中即 `hard_floor` 判红（不重做），`trace_citations:
+  false` 可显式放行（`packs/docgen/agents/quality_gate.py`
+  `_provenance_violations`）。缓存漂移/答错题与 LLM 编造引用在这层现形，
+  不再依赖"页面标题恰含主题词"那类可被反向骗过的评分。
+- **空查询同拒**：web 素材路径的交付契约是"只有 LLM 重构真正执行才可交付"。
+  空查询时重构没有目标，此前有 Key 仍把骨架+TF-IDF / 摘要拼贴出厂（keyless
+  同形状已拒绝的不对称，第二批已登记待裁决），现在两条 web 素材路径同拒
+  （`RESTRUCTURE_UNAVAILABLE` 拒绝自述 + `restructure_refused: True`）；
+  KB 抽取式草稿按其既有设计契约保留。
+- **重构输出补回主题声明行**：`_restructure_document` 的 LLM 新生文档不带
+  `> 主题:` 行（prompt 模板里没有），writer 现在按 query 补回
+  （`_stamp_topic_header`），使绑定对账在重构路径上也有锚；模板自带则不动。
+- 判据：`test_writer.py` +7（空查询同拒两路径 / stats 信号源两路径 / 主题行
+  补回三例）、`test_fidelity_gate.py` +8（绑定一致/缺失/错题、不可追溯 URL、
+  无信号跳过、kb:// 豁免、显式与字符串假值放行）。
+- 如实登记：`_score_topic_relevance` 的关键词覆盖软分保持原样——它是评分
+  维度不是门禁，FP-1 禁的是"用启发指标做门禁"；本批把判红能力从评分维度
+  移交给上面的结构底线。
+
+### Fixed（2026-11-10，设计锚点脚本重钉回绿）
+
+- `scripts/check_design_anchors.py`：origin/main 5bf6445（L4-01 run-metrics）+
+  25aed24（C-23 二次修正）两批把 `pipeline.py`/`dag_executor.py` 推了 6~14 行，
+  10 条锚点（dag_executor×2、pipeline×8）按整行原文逐条重定位，未按偏移推算。
+  实跑 `checked=52 mismatched=0`（rc=0）复验。按脚本自身规矩：本脚本不进 CI，
+  漂移只有手跑才红——这次就是手跑抓出来的。
+- **README 补账工具口径**：Stage 3b 那段末尾的"补账工具（重放终态）本批未做"在
+  2026-10-25 工具落地后已过期，与同页下节自相矛盾。按台账规矩就地留痕收回
+  （旧句保留 + 注明收回原因与落点），不抹历史。
+
 ### Fixed（2026-11-09，L2 非文本边界剩余处置：C 分层——两处操作件边界改 `--border-strong`，其余消费点登记豁免）
 
 - **`.run-back`**（透明底按钮，边框是认出它的唯一线索）与 **`.card-header .task-filter`**

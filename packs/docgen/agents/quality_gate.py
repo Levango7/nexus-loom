@@ -5,7 +5,7 @@ QualityGate Agent v2 - 质量门禁（Profile 模板驱动）
   - completeness:   文档结构完整度（必需章节、目录、参考资料）
   - structure:      标题层级合理性（H1→H2→H3 递进）
   - readability:    内容可读性（段落长度、语言风格）
-  - citation:       引用可追溯性（URL 有效性、来源一致性）
+  - citation:       引用可追溯性（URL 有效性、来源一致性、素材集合可追溯）
   - depth:          内容深度（字数、段落数、信息密度）
 
 特点:
@@ -295,6 +295,50 @@ class QualityGateAgent(BaseAgent):
             return value.strip().lower() in ("1", "true", "yes", "on")
         return bool(value)
 
+    @staticmethod
+    def _unescape_md_link_url(url: str) -> str:
+        """writer 用 _md_escape 转义链接字符，引用对账前先还原。"""
+        return (url.replace(r"\(", "(").replace(r"\)", ")")
+                   .replace(r"\[", "[").replace(r"\]", "]")
+                   .replace(r"\*", "*").replace(r"\_", "_"))
+
+    def _provenance_violations(self, content: str, stats: dict,
+                               run_config: dict) -> list[str]:
+        """来源可追溯性底线（结构性判据，不做关键词计数——FP-1 裁决）：
+
+        1. 主题绑定：writer 在 stats.query 报告本次整合的查询，成品须带
+           `> 主题:` 声明行且与其逐字相等。缓存漂移/答错题的交付在这一层
+           现形，而不是靠猜主题词。
+        2. 引用可追溯：stats.source_urls 是 writer 实际整合的素材 URL 集合，
+           成品里的每个 http(s) 链接必须是其成员。LLM 重构自己编造、或从
+           别的运行串进来的链接不在这集合里 ⇒ 引用不可追溯 ⇒ 拒绝出厂。
+
+        两者都只在 writer 如实报告时才有信号；缺报告 = 无信号，跳过（不罚）。
+        """
+        violations: list[str] = []
+        query = stats.get("query") if isinstance(stats, dict) else None
+        if query:
+            m = re.search(r"^>\s*主题:\s*(.*?)\s*$", content, re.MULTILINE)
+            if m is None:
+                violations.append("成品缺少「> 主题:」声明行，主题绑定无法核对")
+            elif m.group(1) != query:
+                violations.append(
+                    f"成品主题声明与运行查询不一致（声明 {m.group(1)!r} "
+                    f"≠ 查询 {query!r}）")
+        source_urls = stats.get("source_urls") if isinstance(stats, dict) else None
+        if (isinstance(source_urls, list) and source_urls
+                and self._flag_enabled(run_config.get("trace_citations", True))):
+            allowed = {self._unescape_md_link_url(u) for u in source_urls
+                       if isinstance(u, str) and u.startswith(("http://", "https://"))}
+            if allowed:
+                for _title, url in re.findall(r"\[([^\]]*)\]\(([^)]*)\)", content):
+                    u = self._unescape_md_link_url(url)
+                    if u.startswith(("http://", "https://")) and u not in allowed:
+                        violations.append(
+                            f"引用不可追溯：{u[:80]} 不在本次素材来源集合中")
+                        break
+        return violations
+
     def _resolve_run_cfg(self, run_config: dict) -> _RunCfg:
         """解析本次请求的运行配置：profile（run_config 指定，否则沿用初始化 profile）+ 覆盖项。
 
@@ -345,6 +389,13 @@ class QualityGateAgent(BaseAgent):
         # 此前无底线：writer 缺素材时写的占位文档（"未采集到可整合的搜索结果"，
         # 实测 99 字节）能一路走到落盘并把整条流水线报成成功。
         violations = self._fidelity_violations(content, run_config)
+        # 来源可追溯 + 主题绑定底线（2026-11-10 第三批裁决）：评分维度量
+        # "写得好不好"，这条量"成品与本次运行的素材/查询是否同源"。信号全
+        # 在 writer 如实报告的 stats 里；缺报告 = 无信号，跳过不罚。
+        writer_stats = ((payload.get("dependencies_results") or {})
+                        .get("writer") or {}).get("stats") or {}
+        violations.extend(self._provenance_violations(content, writer_stats,
+                                                      run_config))
         if violations:
             hard_fail = {
                 "status": "fail",

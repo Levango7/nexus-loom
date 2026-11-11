@@ -206,6 +206,13 @@ jobs:
     needs: test
     timeout-minutes: 20
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    # 浏览器提供方契约（T4 登记，2026-11-11 补文档）：本 job 的 Chrome 来自
+    # 运行器环境（仓外提供、仓内不装），`--channel chrome` 按运行器已装频道
+    # 解析；仓内只钉 playwright 版本（浮动安装会随上游发版把门随机打红）。
+    # 运行器某天不再带 Chrome 时这一步直接报错、不会静默跳过——届时在下面
+    # 补一行 `playwright install chrome` 即可，接线判据（tests/
+    # test_browser_gate.py::test_ci_invokes_the_gate_with_a_real_browser）
+    # 对「--channel」与「playwright install」两种形态都放行。
     steps:
       - name: Checkout
         uses: actions/checkout@v4
