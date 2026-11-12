@@ -63,6 +63,9 @@ ANCHORS = [
     # 2026-10-29 再钉一次：main 上 #78（进程执行器 + db_backend 迁移）把 loom_core 推了
     # 6~34 行（pipeline/run_store/dag_executor/db_backend/deliveries 五处、共 17 条），
     # 按整行文本就近重钉后 checked=52 mismatched=0 复验。
+    # 2026-11-12 第二次钉：T6（PR #133）pipeline.py 补 output_bytes 三态（+7）、
+    # admin_api.py 加交付物下载口（dispatch +7 / 投影 +2 / handler +51），
+    # 偏移非常数（+7/+9/+60 并存），逐条按整行原文在合并后的树上重钉后复验。
     # 2026-11-12 再钉一次：#78 之后 beb6242（L4-02 GC）/4ae0394（async 尾部钉测）/
     # 0dbc4a2（#132 空计划守卫）三批把 run_store.py 推 +31/+31/+31/+35/+35、pipeline.py
     # 推 +5/+8/+5/+8/+11/+11/+11（偏移非常数），逐条按整行原文重钉后复验。
@@ -77,33 +80,33 @@ ANCHORS = [
     ("loom_core/pipeline.py", 1487, "pipeline.started"),
     ("loom_core/pipeline.py", 1064, "pipeline.finished"),    # _finalize_plan_task 内
     ("loom_core/pipeline.py", 1529, "pipeline.finished"),    # _finalize_plan_task_async 内
-    ("loom_core/pipeline.py", 1801, "record"),               # _deliver 内 DeliveryLedger().record
-    ("loom_core/pipeline.py", 1899, "pipeline.audit"),
+    ("loom_core/pipeline.py", 1808, "record"),               # _deliver 内 DeliveryLedger().record
+    ("loom_core/pipeline.py", 1906, "pipeline.audit"),
     # 2026-11-06：#106（C-23）给 resolve_pipeline_name 的 docstring 加了 4 行，
     # 只有这一条在其下方，2049→2053；同批其余 pipeline 锚点都在改动点之上，未动。
-    ("loom_core/pipeline.py", 2070, ".done"),
+    ("loom_core/pipeline.py", 2077, ".done"),
     # 2026-11-06 再钉一次：控制台三面（#90/#91/#93）在 admin_api.py 里加删代码，
     # 这组 10 条整批下移（1072→1074 … 2019→2052，偏移不是常数，按整行文本对齐）。
     # 2026-11-07 第三次：批次一（#107 F1 / #108 F2 / #109 F3 / #110 F4+F5）又在 admin_api.py
     # 增删了路由与校验，这组锚点再次整体下移（+83…+104，偏移同样不是常数）；
     # 逐条按**整行原文**在合并后的树上重新定位，未按偏移推算。
     ("loom_core/admin_api.py", 754, "get_task"),
-    ("loom_core/admin_api.py", 1177, "list_tasks"),
+    ("loom_core/admin_api.py", 1184, "list_tasks"),
     # Stage 2：/tasks、dashboard、cost 三处读口从 `list_tasks`（内存）换成
     # `list_runs`（内存缓存 ∪ 投影）——锚点跟着换而不是删，否则"读侧已并轨"
     # 这句话在表里就没有对应物了。
-    ("loom_core/admin_api.py", 1195, "list_runs"),
-    ("loom_core/admin_api.py", 1541, "def _task_checkpoint_view"),
-    ("loom_core/admin_api.py", 1941, "list_runs"),
-    ("loom_core/admin_api.py", 2462, "list_runs"),
-    ("loom_core/admin_api.py", 2826, "task = _aio.run(orch.run_plan_async("),
-    ("loom_core/admin_api.py", 2895, "existing_callback = get_callback(task_id)"),
+    ("loom_core/admin_api.py", 1202, "list_runs"),
+    ("loom_core/admin_api.py", 1548, "def _task_checkpoint_view"),
+    ("loom_core/admin_api.py", 1948, "list_runs"),
+    ("loom_core/admin_api.py", 2522, "list_runs"),
+    ("loom_core/admin_api.py", 2886, "task = _aio.run(orch.run_plan_async("),
+    ("loom_core/admin_api.py", 2955, "existing_callback = get_callback(task_id)"),
     # #8：账本与锁的只读 HTTP 面。三条 handler 进表，"文档教了这三个口"才在代码里
     # 有对应物（`test_doc_consistency` 只把文档对到 openapi 规范，规范和 handler
     # 之间没人守——这条就是补那段距离的）。
-    ("loom_core/admin_api.py", 2047, "def _handle_deliveries"),
-    ("loom_core/admin_api.py", 2065, "def _handle_delivery_detail"),
-    ("loom_core/admin_api.py", 2156, "def _handle_locks"),
+    ("loom_core/admin_api.py", 2056, "def _handle_deliveries"),
+    ("loom_core/admin_api.py", 2074, "def _handle_delivery_detail"),
+    ("loom_core/admin_api.py", 2216, "def _handle_locks"),
     # 锁路径解析只留一处：巡检口（`lock_drift`）与执行口（`_verify_lock_after_parse`）
     # 各自解析一次就会报出执行时根本不会发生的漂移。
     ("loom_core/scheduler.py", 338, "def resolve_lock_path"),
