@@ -45,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   端点契约门的续段白名单补 `/inputs`、`/download`（拼接链续段，落点由
   `test_concatenated_endpoints_are_documented` 整条钉住，与 `/nodes/` 同规）。
 
+### Changed（2026-11-12，T7 设计评审台账注记核验）
+
+- A1/A4/A5/A6/A7 五行补 dated 核验注记：代码与判据俱在、台账漏记（A1 审批持久化
+  + 重启放行，`test_approvals.py:196`；A4 `loom demo` 离线机制 + `test_demo.py`
+  11 条；A5 锁指纹呈现 + `plan --diff` 人话三态；A6 maintenance 双判据 + worker
+  接线 + 假时钟；A7 LoomClient 五方法与 OpenAPI 同源 + 真 HTTP 集成）。如实标边界：
+  A1「真 PG 同样通过」无判据（本机判据走 SQLite 形态）不写死；A4 docx 随 render
+  extra，缺时如实报跳过
+- T6 的 CI lint 腿红（ruff UP012×2 / SIM115×1，首跑暴露于新判据文件与下载 handler）
+  已修并推送（`c8b4698`，`encode()` 默认 utf-8 / `open` 进 with 语义不变）；CI 全腿
+  绿（test 3.11–3.14 / docker / 浏览器门 / perf），本地 `ruff check .` 归零
+
 ### Fixed（2026-11-10，T3 治本批：keyless writer 拒绝把 web 素材拼贴当交付物）
 
 - **writer 无 LLM Key 时不再出厂原文拼贴**：此前 `_fill_section` / `_generate_document`
