@@ -311,7 +311,7 @@ class TestDeliveryDownloadHTTP:
     def test_download_streams_the_recorded_file_bytes(self, served, tmp_path):
         base, _orch = served
         out = tmp_path / "out.md"
-        payload = "# 交付物\n\n正文按字节对账。\n".encode("utf-8")
+        payload = "# 交付物\n\n正文按字节对账。\n".encode()
         out.write_bytes(payload)
         _attach_output("da-alice", out)
         code, headers, body = _raw_req(
@@ -377,7 +377,7 @@ class TestDeliveryDownloadHTTP:
     def test_non_ascii_filename_is_rfc5987_encoded(self, served, tmp_path):
         base, _orch = served
         out = tmp_path / "交付 报告.md"
-        out.write_bytes("中文文件名".encode("utf-8"))
+        out.write_bytes("中文文件名".encode())
         _attach_output("da-alice", out)
         code, headers, _body = _raw_req(
             "GET", f"{base}/api/deliveries/da-alice/download", TOK_ALICE)

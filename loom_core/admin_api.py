@@ -2126,28 +2126,29 @@ class AdminHandler(BaseHTTPRequestHandler):
         if not output_path:
             return self._json({"error": "delivery has no output file"}, 404)
         path = Path(output_path)
+        # 整段进 try：open 的 OSError 是"没有可下载的东西"（404，头上什么都不发）；
+        # 流中途的失败与旧码同义——连接已断，客户端拿不到截断体
         try:
-            f = open(path, "rb")
+            with open(path, "rb") as f:
+                size = os.fstat(f.fileno()).st_size
+                name = path.name or "output"
+                ascii_name = re.sub(r"[^A-Za-z0-9._-]", "_", name) or "output"
+                ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Disposition",
+                                 f'attachment; filename="{ascii_name}"; '
+                                 f"filename*=UTF-8''{quote(name)}")
+                self._apply_cors_headers()
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
+                while True:
+                    chunk = f.read(65536)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
         except OSError:
             return self._json({"error": "delivery output not on disk"}, 404)
-        with f:
-            size = os.fstat(f.fileno()).st_size
-            name = path.name or "output"
-            ascii_name = re.sub(r"[^A-Za-z0-9._-]", "_", name) or "output"
-            ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Disposition",
-                             f'attachment; filename="{ascii_name}"; '
-                             f"filename*=UTF-8''{quote(name)}")
-            self._apply_cors_headers()
-            self.send_header("Content-Length", str(size))
-            self.end_headers()
-            while True:
-                chunk = f.read(65536)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
 
     #: 全量锁巡检要解析每一条流水线：本机实测（Python 3.14.3、单进程、无并发负载）
     #: 19 条 = 冷 7.27s / 再跑一遍 11.23s。监控是**轮询**的，每次轮询付这个钱既不
