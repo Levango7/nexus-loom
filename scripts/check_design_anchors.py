@@ -19,9 +19,9 @@ ANCHORS = [
     # Stage 3a：审批的三个写点从 approvals.py 搬进了 RunStore（投影 + 同事务事件）。
     # §1 那一行"审批本身就是一个写面"的结论必须指向新位置，而不是退役成无处可指。
     # Stage 3c 补账把这三口整体下推 12 行（`close_run` 长成条件裁决版）。
-    ("loom_core/" + "run_store.py", 313, "def open_approval"),
-    ("loom_core/" + "run_store.py", 334, "def decide_approval"),
-    ("loom_core/" + "run_store.py", 375, "def consume_approval"),
+    ("loom_core/" + "run_store.py", 344, "def open_approval"),
+    ("loom_core/" + "run_store.py", 365, "def decide_approval"),
+    ("loom_core/" + "run_store.py", 406, "def consume_approval"),
     # Stage 3c（补账）的两处新落点：设计文档 §4 末"至多一条终态事件已下沉到存储层"
     # 这句话必须指向一个真实存在的函数，而不是只写在文档里。
     ("loom_core/" + "run_store.py", 271, "def close_run"),
@@ -29,8 +29,8 @@ ANCHORS = [
     # 注册（register）与取租约（acquire）是两个方法，**只钉一个会让另一半结论无处可指**
     # （合并 #65 收口时 main 上就只剩了 register 这条，acquire 被合并掉了）。
     # 实测行号 570/587（早先写的 573/590 偏 3 行；本脚本不进 CI，所以偏了没人红）。
-    ("loom_core/run_store.py", 578, "def register_schedule"),
-    ("loom_core/run_store.py", 595, "def acquire_schedule_lease"),
+    ("loom_core/run_store.py", 613, "def register_schedule"),
+    ("loom_core/run_store.py", 630, "def acquire_schedule_lease"),
     ("loom_core/backfill.py", 35, "class RunBackfill"),
     ("loom_core/backfill.py", 59, "def replay"),
     # Stage 3b：`complete()` 摘掉 result 参数，整体下移到 203。
@@ -63,21 +63,25 @@ ANCHORS = [
     # 2026-10-29 再钉一次：main 上 #78（进程执行器 + db_backend 迁移）把 loom_core 推了
     # 6~34 行（pipeline/run_store/dag_executor/db_backend/deliveries 五处、共 17 条），
     # 按整行文本就近重钉后 checked=52 mismatched=0 复验。
+    # 2026-11-12 再钉一次：#78 之后 beb6242（L4-02 GC）/4ae0394（async 尾部钉测）/
+    # 0dbc4a2（#132 空计划守卫）三批把 run_store.py 推 +31/+31/+31/+35/+35、pipeline.py
+    # 推 +5/+8/+5/+8/+11/+11/+11（偏移非常数），逐条按整行原文重钉后复验。
     ("loom_core/pipeline.py", 321, "_max_task_history"),
     ("loom_core/pipeline.py", 759, "def cancel"),
-    ("loom_core/pipeline.py", 797, "def resume"),
+    ("loom_core/pipeline.py", 802, "def resume"),
     # 原 1290「不更新 task_queue」那句 docstring 已被 Stage 0 改掉——退役它，改钉新增的
     # 共用写口：§2 那条裂缝的"已并轨"结论必须指向一个真实存在的函数。
     ("loom_core/pipeline.py", 456, "def _record_plan_terminal_state"),
-    # 注：legacy `run()` 已改走同一条发布点，`pipeline.started` 只剩 run_plan() 里这一处
-    ("loom_core/pipeline.py", 1479, "pipeline.started"),
-    ("loom_core/pipeline.py", 1059, "pipeline.finished"),    # _finalize_plan_task 内
-    ("loom_core/pipeline.py", 1521, "pipeline.finished"),    # _finalize_plan_task_async 内
-    ("loom_core/pipeline.py", 1790, "record"),               # _deliver 内 DeliveryLedger().record
-    ("loom_core/pipeline.py", 1888, "pipeline.audit"),
+    # 注：legacy `run()` 已改走同一条发布点；run_plan_async 也发 pipeline.started（1608），
+    # 「只剩 run_plan() 里这一处」已过时，本条钉同步发布点（1487）
+    ("loom_core/pipeline.py", 1487, "pipeline.started"),
+    ("loom_core/pipeline.py", 1064, "pipeline.finished"),    # _finalize_plan_task 内
+    ("loom_core/pipeline.py", 1529, "pipeline.finished"),    # _finalize_plan_task_async 内
+    ("loom_core/pipeline.py", 1801, "record"),               # _deliver 内 DeliveryLedger().record
+    ("loom_core/pipeline.py", 1899, "pipeline.audit"),
     # 2026-11-06：#106（C-23）给 resolve_pipeline_name 的 docstring 加了 4 行，
     # 只有这一条在其下方，2049→2053；同批其余 pipeline 锚点都在改动点之上，未动。
-    ("loom_core/pipeline.py", 2059, ".done"),
+    ("loom_core/pipeline.py", 2070, ".done"),
     # 2026-11-06 再钉一次：控制台三面（#90/#91/#93）在 admin_api.py 里加删代码，
     # 这组 10 条整批下移（1072→1074 … 2019→2052，偏移不是常数，按整行文本对齐）。
     # 2026-11-07 第三次：批次一（#107 F1 / #108 F2 / #109 F3 / #110 F4+F5）又在 admin_api.py

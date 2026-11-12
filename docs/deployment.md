@@ -92,14 +92,14 @@ python run.py --mcp
 > 装不齐就在容器启动时立刻炸，不会拖到某个功能才被发觉。
 
 ```bash
-docker build -t doc-pipeline .
-docker run -d --name doc-pipeline \
+docker build -t nexusloom .
+docker run -d --name nexusloom \
   -p 8910:8910 \
   -v $(pwd)/.env:/app/.env:ro \
-  -v doc-pipeline-checkpoints:/app/checkpoints \
-  -v doc-pipeline-logs:/app/logs \
+  -v nexusloom-checkpoints:/app/checkpoints \
+  -v nexusloom-logs:/app/logs \
   --env-file .env \
-  doc-pipeline input.md -c config.production.json -o output/doc.md
+  nexusloom input.md -c config.production.json -o output/doc.md
 ```
 
 镜像特性：两阶段构建、非 root 用户（uid 1001）、内置 `/health` 健康检查、checkpoints 与 logs 声明为持久化卷。
@@ -112,7 +112,7 @@ docker run -d --name doc-pipeline \
 |------|------|------|
 | 健康检查 | `GET /health` | 总线 + Registry 状态，供 LB / k8s liveness 探针（Docker 已内置） |
 | 指标 | `GET /metrics` | Prometheus 格式，直接接入 Prometheus → Grafana |
-| 日志 | `logs/doc-pipeline_*.jsonl` | 结构化 JSONL，自动轮转；`GET /api/logs` 支持在线过滤查询 |
+| 日志 | `logs/loom_*.jsonl` | 结构化 JSONL，自动轮转；`GET /api/logs` 支持在线过滤查询 |
 | 告警 | `GET /api/alerts` | 熔断 / 死信 / 限流 / 预算超限事件 |
 | 成本 | `GET /api/cost` | LLM 调用成本按供应商 / Agent / 时间维度统计 |
 | 预算熔断 | `POST /api/cost/budget` | 设置上限，超限自动熔断 LLM 调用 |

@@ -95,14 +95,14 @@ python run.py --mcp
 > delayed until some feature discovers it.
 
 ```bash
-docker build -t doc-pipeline .
-docker run -d --name doc-pipeline \
+docker build -t nexusloom .
+docker run -d --name nexusloom \
   -p 8910:8910 \
   -v $(pwd)/.env:/app/.env:ro \
-  -v doc-pipeline-checkpoints:/app/checkpoints \
-  -v doc-pipeline-logs:/app/logs \
+  -v nexusloom-checkpoints:/app/checkpoints \
+  -v nexusloom-logs:/app/logs \
   --env-file .env \
-  doc-pipeline input.md -c config.production.json -o output/doc.md
+  nexusloom input.md -c config.production.json -o output/doc.md
 ```
 
 Image features: two-stage build, non-root user (uid 1001), built-in `/health` check, checkpoints and
@@ -116,7 +116,7 @@ logs declared as persistent volumes.
 |------------|-------|-------------|
 | Health check | `GET /health` | Bus + Registry state, for LB / k8s liveness probe (Docker built-in) |
 | Metrics | `GET /metrics` | Prometheus format, direct to Prometheus → Grafana |
-| Logs | `logs/doc-pipeline_*.jsonl` | Structured JSONL, auto-rotated; `GET /api/logs` online filtered query |
+| Logs | `logs/loom_*.jsonl` | Structured JSONL, auto-rotated; `GET /api/logs` online filtered query |
 | Alerts | `GET /api/alerts` | Circuit-breaker / dead-letter / rate-limit / budget-exceeded events |
 | Cost | `GET /api/cost` | LLM call cost by provider / Agent / time dimension |
 | Budget circuit-breaker | `POST /api/cost/budget` | Set cap, auto circuit-breaks LLM calls when exceeded |

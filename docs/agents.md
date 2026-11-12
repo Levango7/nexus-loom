@@ -1,6 +1,6 @@
 # Agent 开发指南
 
-本文说明如何为 doc-pipeline 编写自定义 Agent。所有内容以当前代码为准：
+本文说明如何为 Loom 编写自定义 Agent。所有内容以当前代码为准：
 契约定义见 `loom_core/base_agent.py`，加载与沙箱见 `loom_core/agent_loader.py`。
 
 **新代码放哪一层**（依赖方向单向，由 `tests/test_layering.py` 当门禁）：
