@@ -1128,13 +1128,13 @@ pip install，空 agents 目录下仍被发现/注册/执行——"本仓零改�
 ```bash
 # 构建并启动常驻 Admin API 服务（生产配置，绑定 0.0.0.0:8910；
 # 非回环绑定强制要求 ADMIN_API_KEY，缺失时容器会拒绝启动并提示）
-docker build -t doc-pipeline .
+docker build -t nexusloom .
 docker run -d -p 8910:8910 -e ADMIN_API_KEY=change-me \
-  -v $(pwd)/checkpoints:/app/checkpoints doc-pipeline
+  -v $(pwd)/checkpoints:/app/checkpoints nexusloom
 
 # 提交任务：POST /api/tasks（鉴权头 Authorization: Bearer <ADMIN_API_KEY>）
 # 一次性生成文档（覆盖默认 CMD）：
-docker run --rm -v $(pwd)/output:/app/output doc-pipeline \
+docker run --rm -v $(pwd)/output:/app/output nexusloom \
   test_input.md -o output/doc.md
 ```
 
