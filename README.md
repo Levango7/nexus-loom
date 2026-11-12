@@ -661,6 +661,7 @@ dashboard 轮询不再每 5 秒新建 TCP+线程；慢请求/慢客户端/半开
 |---|---|---|
 | `LOOM_ADMIN_MAX_CONCURRENCY` | 32 | 并发处理上限；池满即 `503` + `Retry-After: 1`（不排队、不无限起线程） |
 | `LOOM_ADMIN_SOCKET_TIMEOUT` | 30 | socket 读/写超时（秒）；半开连接与空闲 keep-alive 连接超时后由服务端关闭并收回工位 |
+| `ADMIN_CORS_ORIGINS` | 空 | CORS 额外 Origin 白名单（逗号分隔）；默认空＝仅同源与回环同端口放行 |
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
