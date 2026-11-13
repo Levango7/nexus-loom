@@ -70,6 +70,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   在 CI 四腿实跑）；README skipped 分解同步 24→25（23 条真 PG 门 + POSIX + JSON
   后端）。
 
+### Changed（2026-11-13，T9 台账口径更正：process 模式判据已补）
+
+- 设计评审台账 §3.3 第 4 条改判：`executor_type: process` 的「无端到端判据」已
+  过期——`tests/test_executor_process_e2e.py` 6 条本机实跑 6 passed 且 CI test
+  (3.11) 逐条 PASSED（run 43382471512）；死锁史实 462e791 / PR #78 已修。
+  「0 条流水线使用」仍属实（YAML/锁文件零命中），但判据已补 ⇒ 留作可选能力，
+  本条由「补判据 or 删」改判为闭环；`AgentResult` 0 命中随 B8 批已删，两项均
+  闭环。代码面零改动（纯文档口径更正）
+
 ### Fixed（2026-11-10，T3 治本批：keyless writer 拒绝把 web 素材拼贴当交付物）
 
 - **writer 无 LLM Key 时不再出厂原文拼贴**：此前 `_fill_section` / `_generate_document`

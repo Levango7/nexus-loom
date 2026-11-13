@@ -139,7 +139,7 @@
 1. **把"六屏控制台 S1–S6"当目标 IA** —— 屏幕按子系统切分，用户按任务切分。改为 §4 的六个任务面。
 2. **"20x = 924 组合"当对外卖点** —— 组合数度量的是表面积，不是价值。保留为内部覆盖指标，不进门面。
 3. **`--daemon`（只是 sleep）** —— 误导；用 `loom serve`（admin+worker+triggers）替代。
-4. **未验证的能力声明** —— `executor_type: process`（0 条流水线使用、无端到端判据）、`AgentResult`（0 个 Agent 使用）。要么补判据，要么删。
+4. **未验证的能力声明** —— `executor_type: process`（0 条流水线使用、无端到端判据）、`AgentResult`（0 个 Agent 使用）。要么补判据，要么删。 —— **2026-11-13 T9 核验改判**：process 的端到端判据已补且双绿（`tests/test_executor_process_e2e.py` 6 条：真子进程端到端 / child_context 重建 / thread 默认对照 / 未注册代理清晰报错 / 卡死子进程有界失败；本机实跑 6 passed 31s，CI test (3.11) 逐条 PASSED，run 43382471512；死锁史实 462e791 / PR #78 已修）。「0 条流水线使用」仍属实（YAML/锁文件零命中），但「无端到端判据」已不成立 ⇒ 留作可选能力，本条由「补判据 or 删」改判为闭环。`AgentResult` 0 命中已随 B8 批删死代码一并处置，本条两项均闭环。
 5. **admin 提交的文档语义** —— `title/query → 临时 .md` 是旧领域契约，统一到 A3 的类型化输入。
 6. **13 条"builtin packs"的说法** —— 要么给每条 YAML 配 `pack.yaml` 成为真 pack，要么在清册里如实叫 `builtin pipelines`。
 
