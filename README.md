@@ -1157,7 +1157,9 @@ HEALTHCHECK 直接探测容器内 `/health`（免鉴权）。
 python -m pytest tests/ -v
 ```
 
-**3932 个测试本机全绿**（`3932 passed, 24 skipped, 6 deselected`，2026-11-12 按 +12 条
+**3932 个测试本机全绿**（`3932 passed, 25 skipped, 6 deselected`，2026-11-13 按 +1 条
+（T8 A1 真 PG 判据腿：`tests/test_approvals.py` TestApprovalDurableOnPostgres，本机无 PG
+整类 skip，passed 不变、skipped 24→25）自 3932 推为；2026-11-12 按 +12 条
 （T6 控制台 UI 批：交付物下载端点 9 条（`tests/test_deliveries_api.py`：逐字节流 +
 Content-Length/401/越权与不存在同 404/文件不在盘 404/无路径 404/空文件零字节/中文名
 RFC 5987/账本读不动 503/非法 id 先 400）+ `output_bytes` 写侧三态 2 条
