@@ -19,7 +19,7 @@ DASH = Path(__file__).resolve().parent.parent / "loom_core" / "dashboard"
 
 #: 拼接链里的续段：单独出现时不是完整端点（完整路径由前后段拼出，
 #: 例如 '/tasks/' + id + '/nodes/' + name）。续段的落点由专门判据钉住。
-CONTINUATION_TOKENS = {"/nodes/"}
+CONTINUATION_TOKENS = {"/nodes/", "/inputs", "/download"}
 
 
 def _request_tokens(js: str) -> set[str]:
@@ -55,9 +55,15 @@ def test_every_console_request_maps_to_openapi():
         "补 openapi_spec 或在 app.js 去掉该调用")
 
 
-def test_node_inspector_endpoint_is_documented():
-    """拼接链的完整落点：S3 检查器的端点必须整条在 spec 里。"""
-    assert "/tasks/{task_id}/nodes/{node_name}" in _spec_paths()
+def test_concatenated_endpoints_are_documented():
+    """拼接链的完整落点：每条续段对应的整条端点必须在 spec 里。
+
+    S3 检查器（'/nodes/'）、T6 声明读取（'/inputs'）与交付物下载（'/download'）。
+    """
+    paths = _spec_paths()
+    assert "/tasks/{task_id}/nodes/{node_name}" in paths
+    assert "/api/workflows/{name}/inputs" in paths
+    assert "/api/deliveries/{run_id}/download" in paths
 
 
 def test_checker_can_fail_on_a_bogus_token():

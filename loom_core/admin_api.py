@@ -68,7 +68,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from artesian.fast_json import dumps as _fast_dumps
 from artesian.fast_json import loads as _fast_loads
@@ -967,10 +967,17 @@ class AdminHandler(BaseHTTPRequestHandler):
             elif self.path.split("?", 1)[0] == "/api/deliveries":
                 self._handle_deliveries()
             elif self.path.startswith("/api/deliveries/"):
-                run_id = self.path.split("/api/deliveries/", 1)[1].split("/")[0].split("?")[0]
-                if not _validate_task_id(run_id):
-                    return self._json({"error": "invalid run id"}, 400)
-                self._handle_delivery_detail(run_id)
+                rest = self.path.split("/api/deliveries/", 1)[1].split("?", 1)[0]
+                if rest.endswith("/download"):
+                    run_id = rest[: -len("/download")]
+                    if not _validate_task_id(run_id):
+                        return self._json({"error": "invalid run id"}, 400)
+                    self._handle_delivery_download(run_id)
+                else:
+                    run_id = rest.split("/")[0]
+                    if not _validate_task_id(run_id):
+                        return self._json({"error": "invalid run id"}, 400)
+                    self._handle_delivery_detail(run_id)
             elif self.path.split("?", 1)[0] == "/api/locks":
                 self._handle_locks()
             elif self.path.split("?", 1)[0] == "/api/schedules":
@@ -2041,6 +2048,8 @@ class AdminHandler(BaseHTTPRequestHandler):
             # 交付物内容摘要（A2）：空串 = 没有落盘产物，或那一跑写在
             # output_sha256 落地之前——两种都在读侧显示为"未记录"，不冒充已核对。
             "output_sha256": str(rec.get("output_sha256") or ""),
+            # 字节数三态（None=没记录 / -1=文件读不到 / >=0=实测），老行没有这键 ⇒ None
+            "output_bytes": rec.get("output_bytes"),
             "projection": self.orch.run_handle(run_id).projection(),
         }
 
@@ -2089,6 +2098,57 @@ class AdminHandler(BaseHTTPRequestHandler):
         item["topology_hash"] = str(rec.get("topology_hash") or "")
         item["config_hashes"] = dict(rec.get("config_hashes") or {})
         self._json({"delivery": item})
+
+    def _handle_delivery_download(self, run_id: str):
+        """`GET /api/deliveries/<run_id>/download`：交付物文件本体（attachment）。
+
+        可见性与明细同口（`_delivery_item` 裁决，越权与不存在同一个 404）；
+        文件路径只取服务端账本里的 `output_path`，客户端没有任何能影响文件选择的
+        输入。账本行还在但文件已不在（被清理/没写成）⇒ 404 而不是 500：这是
+        "没有可下载的东西"，不是服务出错。文件名走 RFC 5987（filename*），
+        ASCII 回退名消毒到 `[A-Za-z0-9._-]`——账本路径虽来自服务端，也不让
+        换行/引号有机会进响应头。
+        """
+        if not self.orch:
+            return self._json({"error": "orchestrator not set"}, 500)
+        p = self._principal()
+        try:
+            from .deliveries import DeliveryLedger
+            rec = DeliveryLedger().get(run_id)
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("[AdminAPI] 读取交付明细失败: %s", e)
+            return self._json({"error": "deliveries unavailable"}, 503)
+        if not isinstance(rec, dict) or str(rec.get("run_id") or "") != run_id:
+            return self._json({"error": "delivery not found"}, 404)
+        if self._delivery_item(rec, p) is None:
+            return self._json({"error": "delivery not found"}, 404)
+        output_path = str(rec.get("output_path") or "")
+        if not output_path:
+            return self._json({"error": "delivery has no output file"}, 404)
+        path = Path(output_path)
+        # 整段进 try：open 的 OSError 是"没有可下载的东西"（404，头上什么都不发）；
+        # 流中途的失败与旧码同义——连接已断，客户端拿不到截断体
+        try:
+            with open(path, "rb") as f:
+                size = os.fstat(f.fileno()).st_size
+                name = path.name or "output"
+                ascii_name = re.sub(r"[^A-Za-z0-9._-]", "_", name) or "output"
+                ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Disposition",
+                                 f'attachment; filename="{ascii_name}"; '
+                                 f"filename*=UTF-8''{quote(name)}")
+                self._apply_cors_headers()
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
+                while True:
+                    chunk = f.read(65536)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except OSError:
+            return self._json({"error": "delivery output not on disk"}, 404)
 
     #: 全量锁巡检要解析每一条流水线：本机实测（Python 3.14.3、单进程、无并发负载）
     #: 19 条 = 冷 7.27s / 再跑一遍 11.23s。监控是**轮询**的，每次轮询付这个钱既不

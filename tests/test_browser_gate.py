@@ -45,6 +45,9 @@ REQUIRED_PASS_TOPICS = {
     "cancelling rejection": "取消驳回不发决策",
     "explicit confirmation": "确认之后才发驳回",
     "saving credentials": "凭证保存后重载流水线目录",
+    "schema-driven form": "声明式输入表单渲染与 typed 提交（T6）",
+    "undeclared pipeline keeps the freeform": "无声明流水线保持自由文本（T6）",
+    "delivery detail downloads": "交付物下载（T6）",
     "palettes meet WCAG AA": "浅/深主题对比度真浏览器复核（L2-01/L2-02）",
 }
 
@@ -188,3 +191,59 @@ class TestProjectionPayloadParity:
         assert "source" not in IN_MEMORY_NODE_PAYLOAD, "带 source 就变成投影态了，反向对照失效"
         for kind in ("artifact", "idempotency", "circuit_breaker", "rate_limit"):
             assert IN_MEMORY_NODE_PAYLOAD[kind] is not None, f"{kind} 是反向对照的前提"
+
+
+#: 与门里 WORKFLOW_INPUTS_PAYLOAD 同形的声明（T6 同形判据的真解析输入）。
+_TYPED_YAML = """
+name: demo
+pipeline:
+  inputs:
+    type: object
+    required: [topic]
+    additionalProperties: false
+    properties:
+      topic: {type: str, minLength: 2, maxLength: 40}
+      depth: {type: int, minimum: 1, maximum: 5, default: 3}
+      mode: {enum: [fast, full]}
+agents:
+  - name: tldr
+    version: "0.1"
+    dependencies: []
+    config: {max_sentences: 2}
+topology:
+  levels: [["tldr"]]
+  edges: []
+"""
+
+
+class TestInputsPayloadParity:
+    """门里 inputs mock == 后端 `_handle_workflow_inputs` 的真产出（T6）。
+
+    不手抄参照系：真 Scheduler 解析一份同形 YAML，探针截 `_json` 的载荷逐字段比。
+    后端改了响应形状而 mock 没跟上时，门会绿着验一个不存在的契约——这条就是拦它的。
+    """
+
+    def test_gate_inputs_mock_matches_backend_declaration(self, tmp_path, monkeypatch):
+        from loom_core import admin_api
+        from loom_core.scheduler import Scheduler
+        from tests.check_dashboard_browser import WORKFLOW_INPUTS_PAYLOAD
+
+        d = tmp_path / "pipe"
+        d.mkdir()
+        f = d / "demo.yaml"
+        f.write_text(_TYPED_YAML, encoding="utf-8")
+        project = Path(__file__).resolve().parent.parent
+        plan = Scheduler(agents_dir=str(project / "agents"),
+                         pipeline_dir=str(d)).parse_file(str(f), verify_lock=False)
+        monkeypatch.setattr(admin_api, "resolve_pipeline_name",
+                            lambda name, installed: (name, None))
+        monkeypatch.setattr(admin_api._scheduler_mod, "installed_pipelines",
+                            lambda: ["demo"])
+        monkeypatch.setattr(Scheduler, "parse", lambda self, name: plan)
+        probe = object.__new__(admin_api.AdminHandler)
+        captured: dict = {}
+        probe._json = lambda data, status=200: captured.update(data)
+        probe._handle_workflow_inputs("demo")
+        assert captured == WORKFLOW_INPUTS_PAYLOAD, (
+            "门的 inputs mock 与后端 _handle_workflow_inputs 不一致；"
+            f"后端={captured!r}，门={WORKFLOW_INPUTS_PAYLOAD!r}")

@@ -519,9 +519,21 @@ body {
   color: var(--text-muted);
 }
 
+#nt-freeform {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#nt-freeform > label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 .newtask-form textarea,
 .newtask-form select,
-.newtask-form input[type="text"] {
+.newtask-form input[type="text"],
+.newtask-form input[type="number"] {
   background: var(--bg-accent);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -539,10 +551,42 @@ body {
 
 .newtask-form textarea:focus,
 .newtask-form select:focus,
-.newtask-form input[type="text"]:focus {
+.newtask-form input[type="text"]:focus,
+.newtask-form input[type="number"]:focus {
   outline: 1px solid var(--highlight);
   border-color: var(--highlight);
 }
+
+/* 声明式输入表单（T6）：字段网格，标签/提示与自由文本面同一字号口径 */
+.newtask-schema {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 12px;
+}
+
+.newtask-schema .nt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.newtask-schema .nt-field > label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.newtask-schema .nt-req {
+  color: var(--status-error);
+}
+
+.newtask-schema .nt-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* 同 .card[hidden] 的坑：作者 display 压过 UA 的 [hidden]，两个容器都要显式补 */
+#nt-freeform[hidden],
+.newtask-schema[hidden] { display: none !important; }
 
 .newtask-row {
   display: flex;

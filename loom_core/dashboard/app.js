@@ -45,6 +45,11 @@
      明细在下一轮轮询后消失）。返回列表时显式清旗。 */
   let deliveriesDetailOpen = false;
 
+  /* 新建任务表单：当前选中流水线的输入声明（null = 自由文本形）。
+     序号防竞态：快速切换流水线时，慢回来的旧声明不得盖掉新选择。 */
+  let ntSchema = null;
+  let ntSchemaSeq = 0;
+
   // ----------------------------------------------------------
   // DOM cache
   // ----------------------------------------------------------
@@ -75,6 +80,8 @@
 
     // New task form
     els.newTaskForm    = $('#newtask-form');
+    els.ntFreeform     = $('#nt-freeform');
+    els.ntSchema       = $('#nt-schema');
     els.ntQuery        = $('#nt-query');
     els.ntPipeline     = $('#nt-pipeline');
     els.ntOutput       = $('#nt-output');
@@ -1386,7 +1393,12 @@
       requestToken();
       throw new Error('HTTP 401（需要 API Token）');
     }
-    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+    if (!resp.ok) {
+      const err = new Error(data.error || ('HTTP ' + resp.status));
+      // 400 的字段级错误（prepare_inputs 的 fields 表）要带给调用方定位
+      if (data && Array.isArray(data.fields)) err.fields = data.fields;
+      throw err;
+    }
     return data;
   }
 
@@ -1406,6 +1418,7 @@
         opt.textContent = name;
         els.ntPipeline.appendChild(opt);
       }
+      loadInputSchema();
     } catch (err) {
       // F11：此前失败只留 console 一行，页面上什么都没有 —— `#nt-pipeline` 没有 option 时
       // `submitTask` 会**静默省略 pipeline 字段**（服务端按默认流水线跑），用户以为选了默认，
@@ -1424,15 +1437,211 @@
     els.ntMsg.classList.toggle('is-error', !!isError);
   }
 
+  /* ---- 声明式输入表单（T6）----
+     流水线声明了 inputs 就按声明渲染字段、提交 body.inputs；没声明保持自由文本。
+     此前控制台恒发 query，带声明的流水线被 gate_freeform 必拒（400）——等于这类
+     流水线在控制台没有入口。服务端仍是唯一权威（prepare_inputs/gate_freeform），
+     这里的校验只为即时反馈，不替代服务端那道门。 */
+  async function loadInputSchema () {
+    if (!els.ntPipeline || !els.ntSchema) return;
+    const name = els.ntPipeline.value;
+    const seq = ++ntSchemaSeq;
+    if (!name) { setSchemaForm(null); return; }
+    try {
+      const data = await fetchJson(API_BASE + '/api/workflows/'
+        + encodeURIComponent(name) + '/inputs');
+      if (seq !== ntSchemaSeq) return;
+      const schema = (data && data.declared && data.inputs
+        && data.inputs.properties) ? data.inputs : null;
+      setSchemaForm(schema);
+    } catch (err) {
+      if (seq !== ntSchemaSeq) return;
+      // 声明读不到（流水线刚被删/解析失败）：退回自由文本并说清楚，
+      // 提交时服务端会按它自己的声明再拦一次。
+      setSchemaForm(null);
+      showTaskMsg('输入声明读取失败，按自由文本提交：' + (err.message || err), true);
+    }
+  }
+
+  function setSchemaForm (schema) {
+    ntSchema = schema;
+    if (!els.ntSchema || !els.ntFreeform) return;
+    els.ntFreeform.hidden = !!schema;
+    els.ntSchema.hidden = !schema;
+    els.ntSchema.replaceChildren();
+    if (schema) renderSchemaFields(schema);
+  }
+
+  function renderSchemaFields (schema) {
+    const props = schema.properties || {};
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    for (const name of Object.keys(props)) {
+      const spec = props[name] || {};
+      const field = elt('div', 'nt-field');
+      const label = elt('label', null, name);
+      label.htmlFor = 'nt-in-' + name;
+      if (required.includes(name)) label.appendChild(elt('span', 'nt-req', ' *'));
+      field.appendChild(label);
+      field.appendChild(schemaInput(name, spec));
+      const hint = schemaHint(spec, required.includes(name));
+      if (hint) field.appendChild(elt('span', 'nt-hint', hint));
+      els.ntSchema.appendChild(field);
+    }
+  }
+
+  function schemaInput (name, spec) {
+    const type = Array.isArray(spec.type) ? spec.type[0] : spec.type;
+    let input;
+    if (Array.isArray(spec.enum)) {
+      // option.value 存 JSON：枚举值未必是字符串，String(v) 会把 1 和 "1" 混为一谈
+      input = elt('select');
+      if (!('default' in spec)) {
+        const blank = elt('option', null, '（未设置）');
+        blank.value = '';
+        input.appendChild(blank);
+      }
+      for (const v of spec.enum) {
+        const opt = elt('option', null, String(v));
+        opt.value = JSON.stringify(v);
+        input.appendChild(opt);
+      }
+      if ('default' in spec) input.value = JSON.stringify(spec.default);
+    } else if (type === 'bool') {
+      // 三态而不是 checkbox：可选 bool 的"没给"与"给了 false"是两件事
+      input = elt('select');
+      for (const [v, text] of [['', '（未设置）'], ['true', 'true'], ['false', 'false']]) {
+        const opt = elt('option', null, text);
+        opt.value = v;
+        input.appendChild(opt);
+      }
+      if ('default' in spec) input.value = String(spec.default);
+    } else if (type === 'int' || type === 'float') {
+      input = elt('input');
+      input.type = 'number';
+      input.step = type === 'int' ? '1' : 'any';
+      if (spec.minimum != null) input.min = String(spec.minimum);
+      if (spec.maximum != null) input.max = String(spec.maximum);
+      if ('default' in spec) input.value = String(spec.default);
+    } else if (type === 'list' || type === 'dict' || spec.properties || spec.items) {
+      input = elt('textarea');
+      input.rows = 2;
+      input.placeholder = type === 'list' ? '["a", "b"]（JSON）' : '{"key": "value"}（JSON）';
+      if ('default' in spec) input.value = JSON.stringify(spec.default);
+    } else {
+      input = elt('input');
+      input.type = 'text';
+      if ('default' in spec) input.value = String(spec.default);
+    }
+    input.id = 'nt-in-' + name;
+    input.dataset.field = name;
+    return input;
+  }
+
+  function schemaHint (spec, isRequired) {
+    const bits = [];
+    const type = Array.isArray(spec.type) ? spec.type.join('/') : spec.type;
+    if (type) bits.push(type);
+    if (isRequired) bits.push('必填');
+    if (spec.minimum != null || spec.maximum != null) {
+      bits.push('范围 ' + (spec.minimum != null ? spec.minimum : '-∞')
+        + ' ~ ' + (spec.maximum != null ? spec.maximum : '+∞'));
+    }
+    if (spec.minLength != null || spec.maxLength != null) {
+      bits.push('长度 ' + (spec.minLength != null ? spec.minLength : 0)
+        + ' ~ ' + (spec.maxLength != null ? spec.maxLength : '不限'));
+    }
+    if (spec.description) bits.push(String(spec.description));
+    return bits.join(' · ');
+  }
+
+  function collectSchemaInputs () {
+    const props = ntSchema.properties || {};
+    const required = Array.isArray(ntSchema.required) ? ntSchema.required : [];
+    const fields = {};
+    for (const el of els.ntSchema.querySelectorAll('[data-field]')) {
+      fields[el.dataset.field] = el;
+    }
+    const inputs = {};
+    for (const name of Object.keys(props)) {
+      const spec = props[name] || {};
+      const input = fields[name];
+      if (!input) continue;
+      const raw = (input.value || '').trim();
+      if (raw === '') {
+        if (required.includes(name)) return { error: '必填字段 ' + name + ' 未填' };
+        continue;  // 没给的键不交：default 由服务端填（apply_defaults 同口径）
+      }
+      const type = Array.isArray(spec.type) ? spec.type[0] : spec.type;
+      let value = raw;
+      if (Array.isArray(spec.enum)) {
+        value = JSON.parse(raw);  // option.value 就是 JSON.stringify 过的
+      } else if (type === 'bool') {
+        value = raw === 'true';
+      } else if (type === 'int' || type === 'float') {
+        value = Number(raw);
+        if (!Number.isFinite(value)) return { error: '字段 ' + name + ' 要是数值' };
+        if (type === 'int' && !Number.isInteger(value)) {
+          return { error: '字段 ' + name + ' 要是整数' };
+        }
+        if (spec.minimum != null && value < spec.minimum) {
+          return { error: '字段 ' + name + ' 不能小于 ' + spec.minimum };
+        }
+        if (spec.maximum != null && value > spec.maximum) {
+          return { error: '字段 ' + name + ' 不能大于 ' + spec.maximum };
+        }
+      } else if (type === 'list' || type === 'dict' || spec.properties || spec.items) {
+        try {
+          value = JSON.parse(raw);
+        } catch (e) {
+          return { error: '字段 ' + name + ' 不是合法 JSON' };
+        }
+        if (type === 'list' && !Array.isArray(value)) {
+          return { error: '字段 ' + name + ' 要是 JSON 数组' };
+        }
+        if ((type === 'dict' || spec.properties)
+            && (value === null || typeof value !== 'object' || Array.isArray(value))) {
+          return { error: '字段 ' + name + ' 要是 JSON 对象' };
+        }
+      } else {
+        if (spec.minLength != null && raw.length < spec.minLength) {
+          return { error: '字段 ' + name + ' 长度不能少于 ' + spec.minLength };
+        }
+        if (spec.maxLength != null && raw.length > spec.maxLength) {
+          return { error: '字段 ' + name + ' 长度不能超过 ' + spec.maxLength };
+        }
+        if (spec.pattern) {
+          try {
+            if (!new RegExp(spec.pattern).test(raw)) {
+              return { error: '字段 ' + name + ' 不匹配要求的格式' };
+            }
+          } catch (e) { /* Python 正则 JS 未必支持：交服务端判 */ }
+        }
+      }
+      inputs[name] = value;
+    }
+    return { inputs };
+  }
+
   async function submitTask (ev) {
     ev.preventDefault();
-    if (!els.ntQuery || !els.ntSubmit) return;
-    const query = (els.ntQuery.value || '').trim();
-    if (!query) {
-      showTaskMsg('请填写 Query', true);
-      return;
+    if (!els.ntSubmit) return;
+    let body;
+    if (ntSchema) {
+      const collected = collectSchemaInputs();
+      if (collected.error) {
+        showTaskMsg(collected.error, true);
+        return;
+      }
+      body = { inputs: collected.inputs };
+    } else {
+      if (!els.ntQuery) return;
+      const query = (els.ntQuery.value || '').trim();
+      if (!query) {
+        showTaskMsg('请填写 Query', true);
+        return;
+      }
+      body = { query };
     }
-    const body = { query };
     if (els.ntPipeline && els.ntPipeline.value) {
       body.pipeline = els.ntPipeline.value;
     } else if (els.ntPipeline && els.ntPipeline.options.length === 0) {
@@ -1448,10 +1657,18 @@
       const resp = await postJson(API_BASE + '/api/tasks', body);
       showTaskMsg('已提交任务 ' + (resp.task_id || '')
         + '（' + (resp.status || 'pending') + '）', false);
-      els.ntQuery.value = '';
+      if (ntSchema) {
+        setSchemaForm(ntSchema);  // 回到声明默认值，与自由文本清空同口径
+      } else {
+        els.ntQuery.value = '';
+      }
       update().catch(() => {});
     } catch (err) {
-      showTaskMsg('提交失败：' + (err.message || err), true);
+      let msg = '提交失败：' + (err.message || err);
+      if (err.fields && err.fields.length) {
+        msg += '（' + err.fields.map((f) => f.field + '：' + f.reason).join('；') + '）';
+      }
+      showTaskMsg(msg, true);
     } finally {
       els.ntSubmit.disabled = false;
     }
@@ -1744,12 +1961,22 @@
     };
     bar.appendChild(back);
     bar.appendChild(elt('span', 'insp-muted', String(delivery.run_id || '')));
+    const dlNote = elt('div', 'insp-note');
+    dlNote.hidden = true;
+    if (delivery.output_path) {
+      const dl = elt('button', 'run-back', '下载交付物');
+      dl.type = 'button';
+      dl.onclick = () => downloadDelivery(String(delivery.run_id || ''), dl, dlNote);
+      bar.appendChild(dl);
+    }
     wrap.appendChild(bar);
+    wrap.appendChild(dlNote);
 
     const short = fmtShortSha(delivery.output_sha256);
     wrap.appendChild(inspBlock('交付物', [
       ['路径', delivery.output_path || '未落盘'],
       ['sha256', short || '未记录（没有落盘产物，或写在摘要面之前）', short ? 'mono' : 'insp-muted'],
+      ['字节数', fmtBytes(delivery.output_bytes)],
       ['节点 / 产物', (delivery.node_count || 0) + ' / ' + (delivery.artifact_count || 0)],
       ['耗时', delivery.duration_sec == null ? '--' : (delivery.duration_sec + 's')],
     ], '摘要是这一跑收尾时算的：账本行按保留期回收后，磁盘上的交付物文件不受影响。'));
@@ -1777,7 +2004,53 @@
       const block = artifactDigestBlock(n);
       if (block) wrap.appendChild(block);
     }
+    if ((delivery.nodes || []).some((n) => Object.keys(n.artifacts || {}).length)) {
+      wrap.appendChild(elt('div', 'insp-note',
+        '逐节点产物只有摘要（sha256/字节数）：账本不存产物正文，能下载的是上面的交付物文件。'));
+    }
     els.deliveriesPanel.replaceChildren(wrap);
+  }
+
+  /* 下载走 fetch 而不是 <a href>：控制台鉴权是 Bearer token（sessionStorage），
+      plain link 不带 Authorization 头，配了 tokens 的部署上必 401。 */
+  async function downloadDelivery (runId, btn, note) {
+    btn.disabled = true;
+    note.hidden = true;
+    try {
+      const token = getToken();
+      const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+      const resp = await fetch(API_BASE + '/api/deliveries/'
+        + encodeURIComponent(runId) + '/download',
+        { headers, signal: AbortSignal.timeout(30000) });
+      if (resp.status === 401) {
+        requestToken();
+        throw new Error('HTTP 401（需要 API Token）');
+      }
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || ('HTTP ' + resp.status));
+      }
+      const blob = await resp.blob();
+      const cd = resp.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename\*=UTF-8''([^;]+)/i);
+      const name = m ? decodeURIComponent(m[1]) : runId + '-output';
+      const url = URL.createObjectURL(blob);
+      const a = elt('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      note.textContent = '已下载 ' + name + '（' + fmtBytes(blob.size)
+        + '）。内容是否与这一跑一致，拿 sha256 对上面的摘要核。';
+      note.hidden = false;
+    } catch (err) {
+      note.textContent = '下载失败：' + (err.message || err);
+      note.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   /* ---- Settings（评审 §4.2 Settings 面 v1：只读） ----
@@ -2079,6 +2352,7 @@
     initTheme();
     if (els.retryBtn) els.retryBtn.addEventListener('click', handleRetry);
     if (els.newTaskForm) els.newTaskForm.addEventListener('submit', submitTask);
+    if (els.ntPipeline) els.ntPipeline.addEventListener('change', loadInputSchema);
     if (runBack) runBack.addEventListener('click', closeRun);
     const inspClose = document.querySelector('#inspector-close');
     if (inspClose) inspClose.addEventListener('click', closeInspector);

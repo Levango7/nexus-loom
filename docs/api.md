@@ -132,7 +132,8 @@ curl -X POST http://127.0.0.1:8910/api/cache/clear \
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/deliveries` | 最近交付，`?limit=`（默认 50，夹到 200）；响应 `deliveries[]` + `count` / `truncated` / `scope`；逐行带 `output_sha256` / `node_count` / `artifact_count` |
-| GET | `/api/deliveries/{run_id}` | 单条交付的完整载荷：`nodes[]`（`node` / `agent` / `status` / `attempts` / `duration_sec` / `error` / `artifact_keys` / `artifacts`）+ `plan_id` / `input_file` / `output_sha256` / `topology_hash` / `config_hashes` |
+| GET | `/api/deliveries/{run_id}` | 单条交付的完整载荷：`nodes[]`（`node` / `agent` / `status` / `attempts` / `duration_sec` / `error` / `artifact_keys` / `artifacts`）+ `plan_id` / `input_file` / `output_sha256` / `output_bytes` / `topology_hash` / `config_hashes` |
+| GET | `/api/deliveries/{run_id}/download` | 交付物文件本体（`Content-Disposition: attachment`，文件名 RFC 5987 双形式）；可见性与 detail 同口——越权 / 不存在 / 无落盘产物 / 文件已不在都是 404，账本读不动 503 |
 | GET | `/api/locks` | 逐流水线锁巡检，`?pipeline=<name>` 只看一条；响应 `pipelines[]` + `drifted[]` + `scope` |
 
 每行交付都带 `projection`（`complete` / `incomplete` / `legacy` / `unknown`）——它是

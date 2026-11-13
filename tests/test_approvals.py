@@ -12,6 +12,8 @@
   3. 驳回同理：重启后驳回 → 队列行 cancelled、worker 不再执行；
   4. 真 HTTP：收件箱按 token 隔离、admin 看全量；越权审批 404（不泄露存在性）；
      日志/质量/告警这些跨租户聚合面对非 admin 403；dashboard 任务列表按 principal 过滤。
+  5. 真 Postgres（`LOOM_TEST_PG_URL` 未设则 skip）：同一份审批契约在 PG 方言下
+     也成立——待批跨实例（= 跨进程视图）可见、决定幂等、消费落库、按 principal 隔离。
 
 边界：活/死 owner 的判定按 pid 存活，只在单机成立；跨主机接管同一队列未覆盖。
 """
@@ -19,12 +21,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import textwrap
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -560,3 +564,52 @@ class TestLiveOwnerIsNotRequeued:
             sleeper.wait(timeout=10)
         assert q.mark_for_resume("live_owner") is True
         assert q.get("live_owner")["status"] == "pending"
+
+
+# ── 5. 真 Postgres：A1 判据「真 PG 同样通过」的落点 ──────────────
+# 台账此前只有 SQLite 形态判据（2026-11-12 T7 核验如实标「未验」）。
+# CI 的 test job 自带真 PG service（ci.yml services.postgres +
+# LOOM_TEST_PG_URL），本类在 PG 方言下复钉同一份契约；本机无 PG 时
+# 整类 skip，与 test_schedule_lease.py 的 PG 腿同规。
+PG_URL = os.environ.get("LOOM_TEST_PG_URL", "").strip()
+
+try:
+    import psycopg  # noqa: F401
+
+    _HAS_PSYCOPG = True
+except ImportError:
+    _HAS_PSYCOPG = False
+
+
+@pytest.mark.skipif(not (PG_URL and _HAS_PSYCOPG),
+                    reason="LOOM_TEST_PG_URL 未设置或 psycopg 未安装（真 PG 判据）")
+class TestApprovalDurableOnPostgres:
+    def test_request_decide_consume_survive_store_reopen_on_real_pg(self):
+        run_id = f"pg-t8-run-{uuid.uuid4().hex[:10]}"
+        request_id = f"pg-t8-req-{uuid.uuid4().hex[:10]}"
+        first = RunStore(PG_URL)
+        first.open_approval(run_id, request_id, pipeline="gate_demo",
+                            nodes=["release_gate"], principal="alice")
+
+        # 「重启」= 同一 DSN 上的全新实例：内存一概没有，只认持久层
+        second = RunStore(PG_URL)
+        pending = second.pending_approval(run_id)
+        assert pending is not None, "待批必须穿过实例边界活下来"
+        assert pending["request_id"] == request_id
+        assert pending["nodes"] == ["release_gate"]
+        assert pending["principal"] == "alice"
+        assert request_id in [r["request_id"]
+                              for r in second.list_pending_approvals("alice")]
+        assert second.list_pending_approvals("bob") == [], "跨租户隔离在 PG 方言下同义"
+
+        decided = second.decide_approval(request_id, APPROVED, by="alice",
+                                         note="重启后批准")
+        assert decided is not None and decided["status"] == APPROVED
+        assert second.decide_approval(request_id, REJECTED, by="bob") is None, \
+            "已决行不能被二次覆盖"
+        assert second.consume_approval(request_id) >= 1, "消费必须落库"
+
+        third = RunStore(PG_URL)
+        assert third.pending_approval(run_id) is None, "决定后不再占据待批"
+        hist = third.approvals_for_run(run_id)
+        assert hist[0]["status"] == APPROVED and hist[0]["consumed"] == 1

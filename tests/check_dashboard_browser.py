@@ -67,6 +67,24 @@ IN_MEMORY_NODE_PAYLOAD = {
     "checkpoint": None,
 }
 
+#: `/api/workflows/demo/inputs` 的响应（T6 声明式表单）。与后端
+#: `_handle_workflow_inputs` 的真产出逐字段一致——`tests/test_browser_gate.py`
+#: 用真 Scheduler 解析一份同形 YAML 对账，mock 漂移了门就在验一个不存在的契约。
+WORKFLOW_INPUTS_PAYLOAD = {
+    "pipeline": "demo",
+    "declared": True,
+    "inputs": {
+        "type": "object",
+        "required": ["topic"],
+        "additionalProperties": False,
+        "properties": {
+            "topic": {"type": "str", "minLength": 2, "maxLength": 40},
+            "depth": {"type": "int", "minimum": 1, "maximum": 5, "default": 3},
+            "mode": {"enum": ["fast", "full"]},
+        },
+    },
+}
+
 
 
 #: 真浏览器侧的配色复核（L2-01/L2-02）。静态门禁 `test_dashboard_contrast.py`
@@ -190,7 +208,8 @@ class QuietHandler(SimpleHTTPRequestHandler):
 def check(browser, base: str) -> None:
     from playwright.sync_api import expect
 
-    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    page = browser.new_page(viewport={"width": 1280, "height": 900},
+                            accept_downloads=True)
     errors: list[str] = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     responses = {
@@ -201,6 +220,10 @@ def check(browser, base: str) -> None:
         "/api/logs": {"logs": [{"level": "info", "message": "browser-log-sample"}]},
         "/api/approvals": {"approvals": []},
         "/api/pipeline": {"pipeline_files": ["demo.yaml"]},
+        "/api/workflows/demo/inputs": WORKFLOW_INPUTS_PAYLOAD,
+        "/api/workflows/after-login/inputs": {"pipeline": "after-login",
+                                              "declared": False, "inputs": {}},
+        "/api/tasks": {"task_id": "task-browser-1", "status": "pending"},
         "/api/deliveries": {"deliveries": [{
             "run_id": "run-browser-1", "pipeline": "demo", "status": "done",
             "finished_at": 1700000000, "output_sha256": "a" * 64,
@@ -209,6 +232,7 @@ def check(browser, base: str) -> None:
         "/api/deliveries/run-browser-1": {"delivery": {
             "run_id": "run-browser-1", "pipeline": "demo", "status": "done",
             "output_path": "/tmp/out/runner-output.md", "output_sha256": "a" * 64,
+            "output_bytes": 4096,
             "node_count": 2, "artifact_count": 3, "duration_sec": 12,
             "topology_hash": "b" * 64, "config_hashes": {"alpha": "c" * 12},
             "nodes": [{
@@ -253,6 +277,10 @@ def check(browser, base: str) -> None:
     }
     statuses: dict[str, int] = {}
     posts: list[str] = []
+    #: /api/tasks 的提交载荷（T6）：只记 path 断言不了"发的是 inputs 还是 query"
+    task_posts: list[dict] = []
+    #: 真发起过的下载请求（T6）
+    downloads: list[str] = []
     #: 前端真的去取、但门里没 mock 的 API 路径。以前这种请求会被 `continue_()` 放给静态
     #: 服务器，拿到 404 后页面只显示"部分数据不可用"——门照样绿，那两块等于没验。
     unmocked: list[str] = []
@@ -261,6 +289,14 @@ def check(browser, base: str) -> None:
         from urllib.parse import urlsplit
 
         path = urlsplit(route.request.url).path
+        if path == "/api/deliveries/run-browser-1/download":
+            downloads.append(path)
+            route.fulfill(status=200, content_type="text/markdown",
+                          headers={"Content-Disposition":
+                                   'attachment; filename="runner-output.md"; '
+                                   "filename*=UTF-8''runner-output.md"},
+                          body="# browser delivery output\n")
+            return
         if path not in responses and not path.startswith("/tasks/"):
             if path.startswith("/api/") or path == "/health":
                 unmocked.append(path)
@@ -268,6 +304,8 @@ def check(browser, base: str) -> None:
             return
         if route.request.method == "POST":
             posts.append(path)
+            if path == "/api/tasks":
+                task_posts.append(json.loads(route.request.post_data or "{}"))
         route.fulfill(status=statuses.get(path, 200), content_type="application/json",
                       body=json.dumps(responses.get(path, {})))
 
@@ -288,7 +326,7 @@ def check(browser, base: str) -> None:
         expect(page.locator("#panel-deliveries")).to_contain_text("runner-output.md")
         expect(page.locator("#panel-deliveries")).to_contain_text("节点 alpha 的产物")
         expect(page.locator("#panel-deliveries")).to_contain_text("2.0 KB")
-        page.locator("#panel-deliveries .run-back").click()
+        page.get_by_role("button", name="返回账本列表").click()
         expect(page.locator("#panel-deliveries")).to_contain_text("run-browser-1")
         print("PASS: delivery ledger list and detail come from the API payload")
 
@@ -411,6 +449,61 @@ def check(browser, base: str) -> None:
         expect(wf).to_contain_text("持有中（worker-1）")
         expect(page.locator("#badge-workflows")).to_have_text("1 / 1")
         print("PASS: workflows & schedules panel renders rows and lease state")
+
+        # 上面审批段点进了运行详情（#/runs/sample 深链），不退出就 reload，
+        # routeFromHash 会恢复详情态、#panel-newtask 整张卡被 hidden——下面表单断言全落空。
+        page.locator("#run-back").click()
+
+        # T6：声明式输入表单。demo 声明了 inputs ⇒ 自由文本让位给字段表单；
+        # 提交必须走 body.inputs 而不是 query（带声明的流水线 gate_freeform 拒自由文本，
+        # 此前控制台恒发 query，这类流水线在控制台等于没有入口）。
+        responses["/api/pipeline"] = {"pipeline_files": ["demo.yaml", "after-login.yaml"]}
+        page.reload()
+        expect(page.locator("#nt-pipeline option")).to_have_text(["demo", "after-login"])
+        expect(page.locator("#nt-schema")).to_be_visible()
+        expect(page.locator("#nt-freeform")).to_be_hidden()
+        expect(page.locator("#nt-in-topic")).to_be_visible()
+        expect(page.locator("#nt-in-depth")).to_have_value("3")  # default 预填
+        expect(page.locator("#nt-in-mode option")).to_have_text(["（未设置）", "fast", "full"])
+        page.locator("#nt-in-topic").fill("asyncio 指南")
+        page.locator("#nt-submit").click()
+        expect(page.locator("#nt-msg")).to_contain_text("已提交任务 task-browser-1")
+        assert task_posts and task_posts[-1]["inputs"]["topic"] == "asyncio 指南", task_posts
+        assert "query" not in task_posts[-1], "声明式提交不得再带 query"
+        assert task_posts[-1]["pipeline"] == "demo"
+        assert task_posts[-1]["inputs"]["depth"] == 3, "default 需要真的进载荷"
+        # 必填留空 ⇒ 客户端先拦，不发请求
+        before = len(task_posts)
+        page.locator("#nt-in-topic").fill("")
+        page.locator("#nt-submit").click()
+        expect(page.locator("#nt-msg")).to_contain_text("必填字段 topic")
+        assert len(task_posts) == before, "必填未填还把请求发出去了"
+        print("PASS: schema-driven form renders declared inputs and submits typed payload")
+
+        # 无声明的流水线保持自由文本（after-login 的 declared=false）。
+        page.locator("#nt-pipeline").select_option("after-login")
+        expect(page.locator("#nt-freeform")).to_be_visible()
+        expect(page.locator("#nt-schema")).to_be_hidden()
+        page.locator("#nt-query").fill("自由文本主题")
+        page.locator("#nt-submit").click()
+        expect(page.locator("#nt-msg")).to_contain_text("已提交任务 task-browser-1")
+        assert task_posts[-1]["query"] == "自由文本主题", task_posts
+        assert "inputs" not in task_posts[-1], "自由文本提交不得带 inputs"
+        print("PASS: undeclared pipeline keeps the freeform query")
+
+        # T6：交付物下载。按钮走 fetch（带 Bearer）→ blob → 触发浏览器下载，
+        # 文件名取自 Content-Disposition 的 filename*。
+        page.locator("#panel-deliveries tr.row-clickable").click()
+        expect(page.locator("#panel-deliveries")).to_contain_text("runner-output.md")
+        expect(page.locator("#panel-deliveries")).to_contain_text("4.0 KB")
+        dl_btn = page.locator("#panel-deliveries button", has_text="下载交付物")
+        with page.expect_download() as dl_info:
+            dl_btn.click()
+        assert dl_info.value.suggested_filename == "runner-output.md"
+        assert downloads == ["/api/deliveries/run-browser-1/download"], downloads
+        expect(page.locator("#panel-deliveries")).to_contain_text("已下载 runner-output.md")
+        print("PASS: delivery detail downloads the output file with its recorded name")
+
         assert not unmocked, (
             "门里没 mock 的前端数据源：" + str(sorted(set(unmocked)))
             + "——它们会被放给静态服务器变 404，页面只显示'部分数据不可用'，那几块等于没验"
@@ -419,6 +512,9 @@ def check(browser, base: str) -> None:
 
         # 配色（L2-01/L2-02 + 非文本 3 项）：静态门禁实算的是"CSS 模型"，这里量的是
         # 浏览器真级联。两层都过才说明"改对了"，而不是"改得符合我对 CSS 的想象"。
+        # 量的是落定态：#nt-submit 有 transition: background 0.2s，切主题瞬间量到的是
+        # 插值中间色（实测 dark 2.80 假红），不是 WCAG 判的稳态。
+        page.add_style_tag(content="* { transition: none !important; }")
         for theme in ("light", "dark"):
             page.evaluate("(t) => document.documentElement.setAttribute('data-theme', t)", theme)
             report = page.evaluate(CONTRAST_PROBE_JS)

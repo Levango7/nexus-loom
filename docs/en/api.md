@@ -132,7 +132,8 @@ must be rejected, not logged as false (otherwise audit would contain fabricated 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/deliveries` | Recent deliveries, `?limit=` (default 50, capped at 200); response `deliveries[]` + `count` / `truncated` / `scope` |
-| GET | `/api/deliveries/{run_id}` | Single delivery full payload: `nodes[]` (`node` / `agent` / `status` / `attempts` / `duration_sec` / `error` / `artifact_keys`) + `plan_id` / `input_file` |
+| GET | `/api/deliveries/{run_id}` | Single delivery full payload: `nodes[]` (`node` / `agent` / `status` / `attempts` / `duration_sec` / `error` / `artifact_keys` / `artifacts`) + `plan_id` / `input_file` / `output_sha256` / `output_bytes` / `topology_hash` / `config_hashes` |
+| GET | `/api/deliveries/{run_id}/download` | The delivery output file itself (`Content-Disposition: attachment`, RFC 5987 filename); same visibility as detail — cross-tenant / missing / no output file / file gone all return 404, unreadable ledger 503 |
 | GET | `/api/locks` | Per-pipeline lock inspection, `?pipeline=<name>` for single; response `pipelines[]` + `drifted[]` + `scope` |
 
 Each delivery row carries `projection` (`complete` / `incomplete` / `legacy` / `unknown`) — it is the
