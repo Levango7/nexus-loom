@@ -57,6 +57,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   已修并推送（`c8b4698`，`encode()` 默认 utf-8 / `open` 进 with 语义不变）；CI 全腿
   绿（test 3.11–3.14 / docker / 浏览器门 / perf），本地 `ruff check .` 归零
 
+### Changed（2026-11-13，T8 A1 真 PG 判据腿）
+
+- 审批契约在 PG 方言下同义的实跑判据：`tests/test_approvals.py`
+  `TestApprovalDurableOnPostgres`（`LOOM_TEST_PG_URL` 未设或 psycopg 缺装时整类
+  skip，与 `test_schedule_lease.py` 的 PG 腿同规；CI test job 自带真 PG service，
+  四条 Python 腿都会实跑）。同一份契约穿过实例边界：待批跨实例（= 跨进程视图）
+  可见、决定幂等（已决行不可二次覆盖）、消费落库、按 principal 隔离，PG 方言下
+  与 SQLite 形态同义。设计评审台账 A1「真 PG 同样通过」由未验改已验
+  （run 43377620639 / test (3.11) 日志 PASSED [ 16%]）。
+- 计数：本批 +1 条（本机无 PG 整类 skip，passed 不变、skipped 24→25；真 PG 判据
+  在 CI 四腿实跑）；README skipped 分解同步 24→25（23 条真 PG 门 + POSIX + JSON
+  后端）。
+
 ### Fixed（2026-11-10，T3 治本批：keyless writer 拒绝把 web 素材拼贴当交付物）
 
 - **writer 无 LLM Key 时不再出厂原文拼贴**：此前 `_fill_section` / `_generate_document`

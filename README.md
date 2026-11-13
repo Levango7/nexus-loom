@@ -1350,8 +1350,9 @@ selectolax 内核**动态参数化（`_available_kernels()` 在同文件 42–49
 也没有动态参数化），故仍按 −1 记。
 全仓唯一按平台条件的是 `tests/test_requirements_analyzer.py:149` 的
 `skipif(sys.platform != "linux")`，它影响 **skipped**、不影响收集数。）
-差值 **24** = 22 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1，`LOOM_TEST_PG_URL`
-未设时跳过，CI 四条腿都挂真 PG 会执行）+ 1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
+差值 **25** = 23 条真 PG 门（`test_state_backend` 21 + `test_schedule_lease` 1 +
+`test_approvals` 1，`LOOM_TEST_PG_URL` 未设时跳过，CI 四条腿都挂真 PG 会执行）+
+1 条仅 POSIX 语义的路径用例 + 1 条可选 JSON 后端缺包；
 护栏的上界 = 本行自报的 `skipped`（Windows 侧精确）+ 在 Linux 上再加 `LINUX_COLLECT_DELTA = 8`
 的**预算余量**（`tests/test_doc_consistency.py:49`）——那是 2026-10-28 留下的历史上界，
 **不是今天实测的平台差**；今天 Linux 收集比 Windows 少，这 8 条余量用不到，
